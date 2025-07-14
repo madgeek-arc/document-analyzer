@@ -1,4 +1,4 @@
-package eu.openaire.resourcesregistry.api;
+package eu.openaire.resourcesregistry.controller;
 
 
 import com.fasterxml.jackson.core.JsonProcessingException;

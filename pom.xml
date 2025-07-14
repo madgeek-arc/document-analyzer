@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>eu.openaire</groupId>
-	<artifactId>resources-registry</artifactId>
+	<artifactId>document-analyzer</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>Resources Registry</name>
+	<name>Document Analyzer</name>
 	<description>Project for downloading and enriching html/pdf documents.</description>
 	<url/>
 	<licenses>
@@ -60,11 +60,6 @@
 			<artifactId>jsoup</artifactId>
 			<version>1.20.1</version>
 		</dependency>
-		<dependency>
-			<groupId>gr.uoa.di.madgik</groupId>
-			<artifactId>registry-starter-client</artifactId>
-			<version>4.0.3</version>
-		</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
@@ -92,8 +87,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>19</source>
-                    <target>19</target>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
                     <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
             </plugin>
