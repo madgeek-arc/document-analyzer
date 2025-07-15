@@ -1,14 +1,23 @@
 {
-  "metadata": {
+  "docInfo": {
     "title": "<document title in english>",
-    "original_titles": [ "<document title>" ],
+    "originalTitles": [ "<document title>" ],
     "acronym": "<acronym of the organization/institution/owner of the document>",
-    "short_description": "<brief description - if not found generate one and start with '* '>",
-    "abstract": "<document abstract - if not found generate one and start with '* '>",
-    "summary": "<document summary - if not found generate one and start with '* '>",
-    "start_date": "<policy start date in year format - if document refers to a policy>",
-    "end_date": "<policy end date in year format - if document refers to a policy>",
-    "publication_date": "<document publication date in year format>",
+    "shortDescription": {
+      "text": "<description of the document - if not found generate one (up to 100 words)>",
+      "generated": "<boolean field: true if text was generated, false if text was found in the document>"
+    },
+    "abstract": {
+      "text": "<document abstract - if not found generate one",
+      "generated": "<boolean field: true if text was generated, false if text was found in the document>"
+    },
+    "summary": {
+      "text": "<document summary - if not found generate one",
+      "generated": "<boolean field: true if text was generated, false if text was found in the document>"
+    },
+    "startDate": "<policy start date in year format - if document refers to a policy>",
+    "endDate": "<policy end date in year format - if document refers to a policy>",
+    "publicationDate": "<document publication date in year format>",
     "organisations": [ "<name of responsible organisation>" ],
     "country": "<ISO 3166 country code>",
     "language": "<ISO 639 language of the most prevalent text - use language detection to set this value>",
@@ -19,7 +28,7 @@
       }
     ],
     "version": "<version number of the document>",
-    "modification_date": "<latest modification date>",
+    "modificationDate": "<latest modification date>",
     "links": [
       {
         "name": "<linked document name>",
@@ -29,7 +38,7 @@
         "description": "<short description of linked document>"
       }
     ],
-    "other_links": [
+    "otherLinks": [
       {
         "name": "<link name>",
         "type": "<link type: 'feed', 'social', etc>",
@@ -38,6 +47,6 @@
       }
     ],
     "tags": ["<tags of document: values among ['national policy', 'university policy', 'use cases', 'strategy', 'RPO policy', 'RFO policy', 'survey', 'survey results'>" ],
-    "other_tags": [ "<list of 3-7 relevant tags based on document content>" ]
+    "otherTags": [ "<list of 3-7 relevant tags based on document content>" ]
   }
 }
