@@ -17,21 +17,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class LlmContentProcessor implements DocumentProcessor {
+public class LlmDocumentContentProcessor implements DocumentContentProcessor {
 
-    private static final Logger logger = LoggerFactory.getLogger(LlmContentProcessor.class);
+    private static final Logger logger = LoggerFactory.getLogger(LlmDocumentContentProcessor.class);
 
     private final ChatModel chatModel;
     private final ContentMetadataRequestBuilder contentBuilder;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public LlmContentProcessor(ChatModel chatModel, ContentMetadataRequestBuilder contentBuilder) {
+    public LlmDocumentContentProcessor(ChatModel chatModel, ContentMetadataRequestBuilder contentBuilder) {
         this.chatModel = chatModel;
         this.contentBuilder = contentBuilder;
     }
 
     @Override
-    public JsonNode generateMetadata(JsonNode template, Content content) {
+    public JsonNode generate(JsonNode template, Content content) {
         JsonNode response = null;
         ChatClient.ChatClientRequestSpec client = ChatClient
                 .create(chatModel)
