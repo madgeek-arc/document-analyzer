@@ -9,7 +9,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 
 @RestController
-@RequestMapping("/api/v1/documents")
+@RequestMapping("/v1/documents")
 public class DocumentEnrichController {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DocumentEnrichController.class);
