@@ -1,0 +1,27 @@
+logging:
+  level:
+    eu.openaire: debug
+
+server:
+  port: 8666
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+
+spring:
+  application:
+    name: document-analyzer
+  ai:
+    openai:
+      api-key:
+      chat:
+        options:
+          model: gpt-4.1-mini
+
+system-prompt: "
+You are a document extractor and translator.
+You always output what requested and nothing else.
+You never include explanations, markdown or code formatting.
+You detect language and translate to English if requested.
+"
