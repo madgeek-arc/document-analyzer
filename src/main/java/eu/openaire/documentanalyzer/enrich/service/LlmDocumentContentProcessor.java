@@ -11,12 +11,10 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Component
 public class LlmDocumentContentProcessor implements DocumentContentProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(LlmDocumentContentProcessor.class);
@@ -25,9 +23,9 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     private final ContentMetadataRequestBuilder contentBuilder;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public LlmDocumentContentProcessor(ChatModel chatModel, ContentMetadataRequestBuilder contentBuilder) {
+    public LlmDocumentContentProcessor(ChatModel chatModel) {
         this.chatModel = chatModel;
-        this.contentBuilder = contentBuilder;
+        this.contentBuilder = new ContentMetadataRequestBuilder();
     }
 
     @Override
@@ -53,11 +51,11 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     @Override
     public ArrayNode translate(ArrayNode content, String language) {
         String requestTemplate = """
-        Translate the following JSON list to %s and return it in the same format.
-        You will only translate the content, you will not add any explanation or comment.
-        
-        %s
-        """.formatted(language, "%s");
+                Translate the following JSON list to %s and return it in the same format.
+                You will only translate the content, you will not add any explanation or comment.
+                
+                %s
+                """.formatted(language, "%s");
         List<ArrayNode> chunks = splitArrayNode(content, 400, mapper);
 
         ArrayNode translated = mapper.createArrayNode();
@@ -67,7 +65,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
                 .advisors(new SimpleLoggerAdvisor());
 
         for (int i = 0; i < chunks.size(); i++) {
-            logger.debug("Translating: [{} / {}]", i+1, chunks.size());
+            logger.debug("Translating: [{} / {}]", i + 1, chunks.size());
             String request = String.format(requestTemplate, chunks.get(i).toPrettyString());
 
             JsonNode json = requestJson(client, request);
