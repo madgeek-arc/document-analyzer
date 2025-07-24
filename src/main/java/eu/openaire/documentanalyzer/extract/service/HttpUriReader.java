@@ -6,7 +6,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -23,7 +22,6 @@ import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
 
-@Component
 public class HttpUriReader implements UriReader {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpUriReader.class);
