@@ -11,6 +11,8 @@ public interface DocumentContentProcessor {
         return method.perform(template, content);
     }
 
+    <T extends Content> ArrayNode extractInformation(T content);
+
     <T extends Content> JsonNode generate(JsonNode template, T content);
 
     ArrayNode translate(ArrayNode content, String language);

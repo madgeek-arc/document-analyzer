@@ -18,6 +18,38 @@ public class ContentMetadataRequestBuilder {
         };
     }
 
+    public <T extends Content> String request(T content) {
+        return switch (content) {
+            case HtmlContent html -> request(html);
+            default -> request(content.getText());
+        };
+    }
+
+    public String request(String documentContent) {
+        return """
+               Extract the MOST INFORMATIVE PARAGRAPHS of the provided document and fill up a JSON array '[]' with their content.
+               
+               === Document Content ===
+                %s
+                ========================
+                
+                You will output only a valid JSON array in plain text, without any formatting.
+               """.formatted(documentContent);
+    }
+
+    private String request(HtmlContent documentContent) {
+        String request = request(documentContent.toString());
+        return """
+                %s
+                
+                If the provided HTML Document contains a not found message,
+                (e.g. "We're sorry, but the page you were looking for doesn't exist.", "404", "Not Found")
+                then return an empty JSON array '[]'
+                
+                Use only the main content of the HTML, discard top menu and footer.
+                """.formatted(request);
+    }
+
     public String request(JsonNode json, String documentContent) {
         return """
                 Fill up the following JSON template with the content extracted from the provided document.
@@ -44,9 +76,9 @@ public class ContentMetadataRequestBuilder {
                 
                 If the provided HTML Document contains a not found message,
                 (e.g. "We're sorry, but the page you were looking for doesn't exist.", "404", "Not Found")
-                then return an empty json '{}'
+                then return an empty JSON '{}'
                 
-                Use only the main content of the html, discard header/top menu and footer.
+                Use only the main content of the HTML, discard top menu and footer.
                 """.formatted(request);
     }
 }
