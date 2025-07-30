@@ -48,7 +48,7 @@ public class HttpUriReader implements UriReader {
 
         this.client = HttpClient
                 .newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.ALWAYS)
                 .sslContext(sslContext)
                 .build();
     }
