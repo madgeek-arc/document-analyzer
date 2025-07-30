@@ -29,6 +29,23 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     }
 
     @Override
+    public <T extends Content> ArrayNode extractInformation(T content) {
+        JsonNode response;
+        ChatClient.ChatClientRequestSpec client = ChatClient
+                .create(chatModel)
+                .prompt()
+                .advisors(new SimpleLoggerAdvisor());
+        try {
+            response = requestJson(client, contentBuilder.request(content));
+            if (response.isArray())
+                return (ArrayNode) response;
+        } catch (RuntimeException e) {
+            logger.warn(e.getMessage(), e);
+        }
+        return null;
+    }
+
+    @Override
     public JsonNode generate(JsonNode template, Content content) {
         JsonNode response = null;
         ChatClient.ChatClientRequestSpec client = ChatClient
