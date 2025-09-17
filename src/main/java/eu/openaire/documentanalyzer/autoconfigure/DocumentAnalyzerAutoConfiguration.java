@@ -1,5 +1,6 @@
 package eu.openaire.documentanalyzer.autoconfigure;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
 import eu.openaire.documentanalyzer.enrich.service.LlmDocumentContentProcessor;
@@ -10,7 +11,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -29,8 +29,8 @@ public class DocumentAnalyzerAutoConfiguration {
 
     @ConditionalOnClass(DocumentContentProcessor.class)
     @Bean
-    DocumentContentProcessor documentContentProcessor(ChatModel chatModel) {
-        return new LlmDocumentContentProcessor(chatModel);
+    DocumentContentProcessor documentContentProcessor(ChatModel chatModel, ObjectMapper mapper) {
+        return new LlmDocumentContentProcessor(chatModel, mapper);
     }
 
     @ConditionalOnClass(DocumentAnalyzerService.class)

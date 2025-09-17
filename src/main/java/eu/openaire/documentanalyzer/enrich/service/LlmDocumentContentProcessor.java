@@ -21,10 +21,11 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
 
     private final ChatModel chatModel;
     private final ContentMetadataRequestBuilder contentBuilder;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
-    public LlmDocumentContentProcessor(ChatModel chatModel) {
+    public LlmDocumentContentProcessor(ChatModel chatModel, ObjectMapper mapper) {
         this.chatModel = chatModel;
+        this.mapper = mapper;
         this.contentBuilder = new ContentMetadataRequestBuilder();
     }
 
@@ -40,7 +41,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
             if (response.isArray())
                 return (ArrayNode) response;
         } catch (RuntimeException e) {
-            logger.warn(e.getMessage(), e);
+            logger.error(e.getMessage(), e);
         }
         return null;
     }
