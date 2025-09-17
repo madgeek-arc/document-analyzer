@@ -40,7 +40,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
             response = requestJson(client, contentBuilder.request(content));
             if (response.isArray())
                 return (ArrayNode) response;
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             logger.error(e.getMessage(), e);
         }
         return null;
@@ -55,7 +55,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
                 .advisors(new SimpleLoggerAdvisor());
         try {
             response = requestJson(client, contentBuilder.request(template, content));
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return null;
         }
         return response;
@@ -82,29 +82,33 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
         ChatClient.ChatClientRequestSpec client = ChatClient.create(chatModel).prompt()
                 .advisors(new SimpleLoggerAdvisor());
 
-        for (int i = 0; i < chunks.size(); i++) {
-            logger.debug("Translating: [{} / {}]", i + 1, chunks.size());
-            String request = String.format(requestTemplate, chunks.get(i).toPrettyString());
+        try {
+            for (int i = 0; i < chunks.size(); i++) {
+                logger.debug("Translating: [{} / {}]", i + 1, chunks.size());
+                String request = String.format(requestTemplate, chunks.get(i).toPrettyString());
 
-            JsonNode json = requestJson(client, request);
-            if (!json.isArray()) {
-                throw new RuntimeException("JSON response should be an array.");
-            }
-            ArrayNode translatedChunk = (ArrayNode) json;
+                JsonNode json = requestJson(client, request);
+                if (!json.isArray()) {
+                    throw new RuntimeException("JSON response should be an array.");
+                }
+                ArrayNode translatedChunk = (ArrayNode) json;
 
-            for (JsonNode node : translatedChunk) {
-                translated.add(node);
+                for (JsonNode node : translatedChunk) {
+                    translated.add(node);
+                }
             }
+        } catch (Exception e) {
+            logger.error(e.getMessage(), e);
         }
 
         return translated;
     }
 
-    JsonNode requestJson(ChatClient.ChatClientRequestSpec client, String request) {
+    JsonNode requestJson(ChatClient.ChatClientRequestSpec client, String request) throws Exception {
         ChatResponse chatResponse;
         JsonNode json = null;
-        // retry up to 3 times if response is truncated
-        for (int j = 0; j < 3; j++) {
+        // retry up to 5 times if response is truncated
+        for (int j = 0; j < 5; j++) {
             try {
                 chatResponse = client.user(request).call().chatResponse();
                 json = map(chatResponse.getResult().getOutput().getText());
@@ -114,7 +118,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
                 client.user("The JSON response you provided was invalid, I will ask you in the following prompt to resend it.").call();
             }
         }
-        throw new RuntimeException("Could not retrieve response in valid JSON format. Aborting..");
+        throw new Exception("Could not retrieve response in valid JSON format. Aborting..");
     }
 
     private String stripJsonCodeFormatting(String jsonString) {
