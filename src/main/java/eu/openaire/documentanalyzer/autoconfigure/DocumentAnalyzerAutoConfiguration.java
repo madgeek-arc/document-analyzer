@@ -1,12 +1,16 @@
 package eu.openaire.documentanalyzer.autoconfigure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
 import eu.openaire.documentanalyzer.enrich.service.LlmDocumentContentProcessor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,6 +21,18 @@ import java.security.NoSuchAlgorithmException;
 
 @AutoConfiguration
 public class DocumentAnalyzerAutoConfiguration {
+
+    @Bean
+    // override spring-ai static object mapper configuration to bypass Duration serialization issue
+    ApplicationRunner patchSpringAiObjectMapper() {
+        return args -> {
+            ObjectMapper staticMapper = ModelOptionsUtils.OBJECT_MAPPER; // <-- static mapper
+            staticMapper.registerModule(new JavaTimeModule());
+            staticMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+            staticMapper.disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
+            staticMapper.findAndRegisterModules();
+        };
+    }
 
     @ConditionalOnClass(ChatClient.class)
     @ConditionalOnProperty("system-prompt")
