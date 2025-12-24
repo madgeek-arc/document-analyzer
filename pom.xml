@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.5.5</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>eu.openaire</groupId>
 	<artifactId>document-analyzer</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0</version>
 	<packaging>jar</packaging>
 	<name>Document Analyzer</name>
 	<description>Project for downloading and enriching html/pdf documents.</description>
-	<url/>
+	<url />
 	<licenses>
 		<license>
 			<name>Apache License, Version 2.0</name>
@@ -22,13 +21,13 @@
 		</license>
 	</licenses>
 	<developers>
-		<developer/>
+		<developer />
 	</developers>
 	<scm>
 		<connection>scm:git:ssh://git@github.com/madgeek-arc/document-analyzer.git</connection>
 		<developerConnection>scm:git:ssh://git@github.com/madgeek-arc/document-analyzer.git</developerConnection>
 		<url>https://github.com/madgeek-arc/document-analyzer.git</url>
-		<tag>HEAD</tag>
+		<tag>1.0.0</tag>
 	</scm>
 	<properties>
 		<java.version>21</java.version>
