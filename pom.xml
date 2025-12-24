@@ -25,10 +25,10 @@
 		<developer/>
 	</developers>
 	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
+		<connection>scm:git:ssh://git@github.com/madgeek-arc/document-analyzer.git</connection>
+		<developerConnection>scm:git:ssh://git@github.com/madgeek-arc/document-analyzer.git</developerConnection>
+		<url>https://github.com/madgeek-arc/document-analyzer.git</url>
+		<tag>HEAD</tag>
 	</scm>
 	<properties>
 		<java.version>21</java.version>
@@ -78,13 +78,34 @@
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
-
+	<distributionManagement>
+		<repository>
+			<uniqueVersion>true</uniqueVersion>
+			<id>madgik-releases</id>
+			<layout>default</layout>
+			<url>https://repo.madgik.di.uoa.gr/content/repositories/releases</url>
+		</repository>
+		<snapshotRepository>
+			<uniqueVersion>true</uniqueVersion>
+			<id>madgik-snapshots</id>
+			<layout>default</layout>
+			<url>https://repo.madgik.di.uoa.gr/content/repositories/snapshots</url>
+		</snapshotRepository>
+	</distributionManagement>
 	<build>
 		<plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-release-plugin</artifactId>
+				<configuration>
+					<tagNameFormat>@{project.version}</tagNameFormat>
+					<scmCommentPrefix>chore(release): </scmCommentPrefix>
+				</configuration>
+			</plugin>
         </plugins>
 	</build>
 
