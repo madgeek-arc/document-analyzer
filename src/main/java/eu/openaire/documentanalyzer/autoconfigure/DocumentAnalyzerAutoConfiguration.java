@@ -38,17 +38,17 @@ import java.security.NoSuchAlgorithmException;
 @AutoConfiguration
 public class DocumentAnalyzerAutoConfiguration {
 
-    @Bean
-    // override spring-ai static object mapper configuration to bypass Duration serialization issue
-    ApplicationRunner patchSpringAiObjectMapper() {
-        return args -> {
-            ObjectMapper staticMapper = ModelOptionsUtils.OBJECT_MAPPER; // <-- static mapper
-            staticMapper.registerModule(new JavaTimeModule());
-            staticMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-            staticMapper.disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
-            staticMapper.findAndRegisterModules();
-        };
-    }
+//    @Bean
+//    // override spring-ai static object mapper configuration to bypass Duration serialization issue
+//    ApplicationRunner patchSpringAiObjectMapper() {
+//        return args -> {
+//            ObjectMapper staticMapper = ModelOptionsUtils.OBJECT_MAPPER; // <-- static mapper
+//            staticMapper.registerModule(new JavaTimeModule());
+//            staticMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+//            staticMapper.disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
+//            staticMapper.findAndRegisterModules();
+//        };
+//    }
 
     @ConditionalOnClass(ChatClient.class)
     @ConditionalOnProperty("system-prompt")
