@@ -16,6 +16,8 @@
 
 package eu.openaire.documentanalyzer.extract.service;
 
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.LoadState;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Comment;
@@ -26,22 +28,76 @@ import org.jsoup.select.Elements;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
-public class WebPageContentExtractor implements ContentExtractor {
+public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WebPageContentExtractor.class);
 
+    private final Playwright playwright;
+    private final Browser browser;
+
+    public WebPageContentExtractor() {
+        this.playwright = Playwright.create();
+        this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
+                .setHeadless(true)
+                .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox")));
+    }
+
+    /**
+     * Navigates to the given URL with Playwright, waits for the page to render
+     * (including JS-driven content), then extracts and cleans the HTML.
+     */
+    public HtmlContent extractFromUrl(String url) throws IOException {
+        try (BrowserContext context = browser.newContext()) {
+            Page page = context.newPage();
+            page.navigate(url);
+            try {
+                page.waitForLoadState(LoadState.NETWORKIDLE,
+                        new Page.WaitForLoadStateOptions().setTimeout(5000));
+            } catch (PlaywrightException e) {
+                logger.debug("Network idle timeout for {}, proceeding with current state", url);
+            }
+            String renderedHtml = page.content();
+            return processHtml(renderedHtml);
+        } catch (PlaywrightException e) {
+            throw new IOException("Playwright failed to render page: " + url, e);
+        }
+    }
+
+    /**
+     * Loads raw HTML bytes into Playwright for rendering (executes inline scripts),
+     * then extracts and cleans the result.
+     */
     @Override
     public HtmlContent extract(byte[] data) throws IOException {
         String htmlData = new String(data, StandardCharsets.UTF_8);
+        try (BrowserContext context = browser.newContext()) {
+            Page page = context.newPage();
+            page.setContent(htmlData);
+            String renderedHtml = page.content();
+            return processHtml(renderedHtml);
+        } catch (PlaywrightException e) {
+            logger.warn("Playwright rendering failed, falling back to raw HTML parsing", e);
+            return processHtml(htmlData);
+        }
+    }
+
+    @Override
+    public void close() {
+        browser.close();
+        playwright.close();
+    }
+
+    private HtmlContent processHtml(String htmlData) {
         Document doc = clean(Jsoup.parse(htmlData));
 
         logger.debug("HTML: \n{}", doc.html().strip());
 
         String metadata = extractMetadata(doc);
-
         String text = extractText(doc);
 
         HtmlContent content = HtmlContent.of(doc.html(), text);
