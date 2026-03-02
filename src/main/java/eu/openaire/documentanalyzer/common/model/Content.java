@@ -21,6 +21,14 @@ public class Content {
     protected String metadata;
     protected String text;
 
+    public Content() {
+    }
+
+    public Content(Content content) {
+        this.metadata = content.metadata;
+        this.text = content.text;
+    }
+
     public String getMetadata() {
         return metadata;
     }

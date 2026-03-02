@@ -23,6 +23,11 @@ public class HtmlContent extends Content {
     public HtmlContent() {
     }
 
+    public HtmlContent(HtmlContent content) {
+        super(content);
+        this.html = content.getHtml();
+    }
+
     public static HtmlContent of(String html, String text) {
         HtmlContent content = new HtmlContent();
         content.setHtml(html);
