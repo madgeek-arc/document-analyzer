@@ -18,6 +18,13 @@ package eu.openaire.documentanalyzer.common.model;
 
 public class PdfContent extends Content {
 
+    public PdfContent() {
+    }
+
+    public PdfContent(Content content) {
+        super(content);
+    }
+
     public static PdfContent of(String metadata, String text) {
         PdfContent content = new PdfContent();
         content.setMetadata(metadata);
