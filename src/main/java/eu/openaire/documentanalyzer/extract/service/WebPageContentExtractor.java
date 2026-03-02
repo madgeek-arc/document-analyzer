@@ -18,7 +18,9 @@ package eu.openaire.documentanalyzer.extract.service;
 
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.WaitUntilState;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
+import jakarta.annotation.PostConstruct;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
@@ -32,6 +34,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
@@ -52,17 +55,26 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * (including JS-driven content), then extracts and cleans the HTML.
      */
     public HtmlContent extractFromUrl(String url) throws IOException {
-        try (BrowserContext context = browser.newContext()) {
-            Page page = context.newPage();
-            page.navigate(url);
+//        try (BrowserContext context = browser.newContext(); Page page = context.newPage()) {
+        try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .setExtraHTTPHeaders(Map.of(
+                        "Accept-Language", "en-US,en;q=0.9",
+                        "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                ))); Page page = context.newPage()) {
+            page.navigate(url, new Page.NavigateOptions()
+                    .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+                    .setTimeout(100000));
             try {
                 page.waitForLoadState(LoadState.NETWORKIDLE,
-                        new Page.WaitForLoadStateOptions().setTimeout(5000));
+                        new Page.WaitForLoadStateOptions().setTimeout(60000));
             } catch (PlaywrightException e) {
                 logger.debug("Network idle timeout for {}, proceeding with current state", url);
             }
             String renderedHtml = page.content();
             return processHtml(renderedHtml);
+        } catch (TimeoutError e) {
+            throw new IOException("Navigation timeout for " + url);
         } catch (PlaywrightException e) {
             throw new IOException("Playwright failed to render page: " + url, e);
         }
