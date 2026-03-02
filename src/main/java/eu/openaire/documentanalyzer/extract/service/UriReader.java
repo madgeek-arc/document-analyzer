@@ -21,6 +21,8 @@ import java.net.URI;
 
 public interface UriReader {
 
-    byte[] read(URI uri) throws IOException;
+    record Data(URI uri, byte[] data) {}
+
+    Data read(URI uri) throws IOException;
 
 }

@@ -70,7 +70,7 @@ public class HttpUriReader implements UriReader {
     }
 
     @Override
-    public byte[] read(URI uri) throws IOException {
+    public Data read(URI uri) throws IOException {
         try {
             logger.info("Reading url: {}", uri);
             HttpRequest request = HttpRequest
@@ -83,7 +83,11 @@ public class HttpUriReader implements UriReader {
             if (response.statusCode() != 200) {
                 throw new RuntimeException(response.toString());
             }
-            byte[] bytes = response.body().readAllBytes();
+
+            byte[] bytes;
+            try(InputStream is = response.body()) {
+                bytes = is.readAllBytes();
+            }
 
             Document doc = Jsoup.parse(new String(bytes, detectCharset(response)));
 
@@ -91,7 +95,7 @@ public class HttpUriReader implements UriReader {
             if (englishUrl != null && !englishUrl.equals(uri.toString())) {
                 return read(URI.create(englishUrl));
             }
-            return bytes;
+            return new Data(uri, bytes);
 
         } catch (InterruptedException e) {
             throw new RuntimeException(e);

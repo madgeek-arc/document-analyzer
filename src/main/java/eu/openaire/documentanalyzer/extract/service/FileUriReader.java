@@ -24,8 +24,8 @@ import java.nio.file.Path;
 public class FileUriReader implements UriReader {
 
     @Override
-    public byte[] read(URI uri) throws IOException {
+    public Data read(URI uri) throws IOException {
         Path path = Path.of(uri);
-        return Files.readAllBytes(path);
+        return new Data(uri, Files.readAllBytes(path));
     }
 }
