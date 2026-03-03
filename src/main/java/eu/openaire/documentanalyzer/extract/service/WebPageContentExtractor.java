@@ -19,8 +19,8 @@ package eu.openaire.documentanalyzer.extract.service;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import crawlercommons.sitemaps.*;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
-import jakarta.annotation.PostConstruct;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
@@ -29,21 +29,31 @@ import org.jsoup.nodes.Node;
 import org.jsoup.select.Elements;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WebPageContentExtractor.class);
 
+
+    private final HttpUriReader contentReader;
     private final Playwright playwright;
     private final Browser browser;
 
-    public WebPageContentExtractor() {
+    public WebPageContentExtractor() throws NoSuchAlgorithmException, KeyManagementException {
+        this.contentReader = new HttpUriReader();
         this.playwright = Playwright.create();
         this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)
@@ -51,9 +61,53 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     }
 
     /**
+     * Performs whole-site scraping using the sitemap file. If the sitemap does not exist, it scrapes only the
+     * provided url.
+     *
+     * @param uri the uri to extract content from
+     * @return the extracted content
+     * @throws IOException
+     */
+    public HtmlContent extractWholeSite(URI uri) throws IOException {
+        String baseUrl = uri.getScheme() + "://" + uri.getHost();
+        URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
+        List<String> urls;
+
+        try {
+            urls = extractUrlsFromSitemap(sitemapUrl);
+            urls = getOnlyHtmlPages(urls);
+            // TODO: keep only english version of pages when it exists
+        } catch (Exception e) {
+            logger.debug(e.getMessage());
+            logger.info("Sitemap not found. Proceeding with provided url.");
+            urls = List.of(uri.toString());
+        }
+
+        // extract content from main site
+        HtmlContent content = extractFromUrl(uri.toString());
+
+        for (String url : urls) {
+            try {
+                // extract content from supplementary sites
+                HtmlContent extra = extractFromUrl(url);
+                content.addExtraContent(extra);
+            } catch (Throwable throwable) {
+                logger.error("Skipping page {}.", url, throwable);
+            }
+        }
+        return content;
+    }
+
+    /**
      * Navigates to the given URL with Playwright, waits for the page to render
      * (including JS-driven content), then extracts and cleans the HTML.
+     *
+     * @param url the url to render and extract content
+     * @return the extracted content
+     * @throws IOException
      */
+    @Retryable(retryFor = IOException.class, maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
+    // Replace Retryable with RetryTemplate if I decide to implement robots.txt compliant scraping
     public HtmlContent extractFromUrl(String url) throws IOException {
 //        try (BrowserContext context = browser.newContext(); Page page = context.newPage()) {
         try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
@@ -72,7 +126,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                 logger.debug("Network idle timeout for {}, proceeding with current state", url);
             }
             String renderedHtml = page.content();
-            return processHtml(renderedHtml);
+            HtmlContent content = extractHtmlContent(renderedHtml);
+            content.setUrl(url);
+            return content;
         } catch (TimeoutError e) {
             throw new IOException("Navigation timeout for " + url);
         } catch (PlaywrightException e) {
@@ -91,10 +147,10 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             Page page = context.newPage();
             page.setContent(htmlData);
             String renderedHtml = page.content();
-            return processHtml(renderedHtml);
+            return extractHtmlContent(renderedHtml);
         } catch (PlaywrightException e) {
             logger.warn("Playwright rendering failed, falling back to raw HTML parsing", e);
-            return processHtml(htmlData);
+            return extractHtmlContent(htmlData);
         }
     }
 
@@ -104,7 +160,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         playwright.close();
     }
 
-    private HtmlContent processHtml(String htmlData) {
+    private HtmlContent extractHtmlContent(String htmlData) {
         Document doc = clean(Jsoup.parse(htmlData));
 
         logger.debug("HTML: \n{}", doc.html().strip());
@@ -174,7 +230,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         }, doc);
 
         doc.select("header").remove();
-//        doc.select("footer").remove();
+        // doc.select("footer").remove(); // Do not remove footer as it usually contains useful links
         doc.select("link[rel=stylesheet]").remove();
         doc.select("link[rel=*icon]").remove();
         doc.select("input").remove();
@@ -202,5 +258,67 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             el.removeAttr("align");
         }
         return doc;
+    }
+
+    /**
+     * Reads a sitemap url and extracts all site urls.
+     *
+     * @param url the sitemap url
+     * @return list of urls
+     * @throws Exception if sitemap parsing fails
+     */
+    public List<String> extractUrlsFromSitemap(URI url) throws Exception {
+
+        SiteMapParser parser = new SiteMapParser();
+        List<String> urls = new ArrayList<>();
+
+        UriReader.Data data = contentReader.read(url);
+
+        AbstractSiteMap abstractSiteMap = parser.parseSiteMap(data.data(), data.uri().toURL());
+
+        if (abstractSiteMap.isIndex()) {
+            // sitemap index — points to multiple child sitemaps
+            SiteMapIndex index = (SiteMapIndex) abstractSiteMap;
+
+            for (AbstractSiteMap childSiteMap : index.getSitemaps()) {
+                // recurse into each child sitemap
+                urls.addAll(extractUrlsFromSitemap(childSiteMap.getUrl().toURI()));
+            }
+        } else {
+            // regular sitemap — contains actual URLs
+            SiteMap siteMap = (SiteMap) abstractSiteMap;
+
+            for (SiteMapURL siteMapUrl : siteMap.getSiteMapUrls()) {
+                urls.add(siteMapUrl.getUrl().toString());
+            }
+        }
+
+        return urls;
+    }
+
+    /**
+     * Accepts a list of urls and removes all urls resolving to known image, video, audio, archive, asset file types.
+     *
+     * @param urls list of urls
+     * @return cleaned up list of urls (simple urls or document file types)
+     */
+    private List<String> getOnlyHtmlPages(List<String> urls) {
+        List<String> pages = new ArrayList<>();
+        Pattern pattern = Pattern.compile(
+                "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|" +  // images
+                        "mp4|mov|avi|mkv|webm|wmv|flv|" +             // video
+                        "mp3|wav|ogg|flac|aac|wma|" +                 // audio
+//                        "pdf|doc|docx|xls|xlsx|ppt|pptx|" +           // documents
+                        "zip|tar|gz|rar|7z|" +                        // archives
+                        "css|js|woff|woff2|ttf|eot)$",                // assets
+                Pattern.CASE_INSENSITIVE
+        );
+        for (String urlString : urls) {
+            URI url = URI.create(urlString);
+            if (!pattern.matcher(url.getPath()).find()) {
+                pages.add(urlString);
+            }
+        }
+        return pages;
     }
 }

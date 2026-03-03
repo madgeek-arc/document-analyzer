@@ -19,7 +19,6 @@ package eu.openaire.documentanalyzer.analyze.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.common.model.Content;
-import eu.openaire.documentanalyzer.common.model.HtmlContent;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
 import eu.openaire.documentanalyzer.extract.service.HttpUriReader;
 import eu.openaire.documentanalyzer.extract.service.PdfContentExtractor;
@@ -56,10 +55,12 @@ public class DocumentAnalyzerService implements Closeable {
             if (uri.toString().contains(".pdf")) {
                 return pdfExtractor.extract(raw.data());
             } else {
-                return webPageExtractor.extractFromUrl(raw.uri().toString());
+                return webPageExtractor.extractWholeSite(raw.uri());
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } catch (Exception e) {
+            throw new RuntimeException("Could not parse sitemap.", e);
         }
     }
 
