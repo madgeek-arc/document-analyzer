@@ -16,16 +16,25 @@
 
 package eu.openaire.documentanalyzer.common.model;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static eu.openaire.documentanalyzer.utils.DiffUtils.extractUniquePart;
+
 public class HtmlContent extends Content {
 
+    private String url;
     private String html;
+    private Map<String, String> extraContent = new LinkedHashMap<>();
 
     public HtmlContent() {
     }
 
     public HtmlContent(HtmlContent content) {
         super(content);
+        this.url = content.getUrl();
         this.html = content.getHtml();
+        this.extraContent = new LinkedHashMap<>(content.getExtraContent());
     }
 
     public static HtmlContent of(String html, String text) {
@@ -33,6 +42,25 @@ public class HtmlContent extends Content {
         content.setHtml(html);
         content.setText(text);
         return content;
+    }
+
+    public void addExtraContent(HtmlContent extra) {
+        if (extraContent == null) {
+            this.extraContent = new LinkedHashMap<>();
+        }
+        String uniqueData = extractUniquePart(this.getHtml(), extra.getHtml());
+
+        if (!uniqueData.isBlank()) {
+            this.getExtraContent().put(extra.getUrl(), uniqueData);
+        }
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
     }
 
     public String getHtml() {
@@ -43,14 +71,57 @@ public class HtmlContent extends Content {
         this.html = html;
     }
 
+    public Map<String, String> getExtraContent() {
+        return extraContent;
+    }
+
+    public void setExtraContent(Map<String, String> extraContent) {
+        this.extraContent = extraContent;
+    }
+
     @Override
     public String toString() {
+        if (extraContent != null && !extraContent.isEmpty()) {
+            return extendedToString();
+        } else {
+            return simpleToString();
+        }
+    }
+
+    private String simpleToString() {
         return """
                 === HTML Content ===
                 %s
                 ====================
                 """.formatted(
                 this.html
+        );
+    }
+
+    private String extendedToString() {
+        StringBuilder supplementaryContent = new StringBuilder();
+        for (Map.Entry<String, String> entry : extraContent.entrySet()) {
+            supplementaryContent.append("\n\nSite: ").append(entry.getKey());
+            supplementaryContent.append("\nHTML:");
+            supplementaryContent.append("\n----------------------------------\n");
+            supplementaryContent.append(entry.getValue());
+            supplementaryContent.append("\n----------------------------------");
+        }
+
+        return """
+                === MAIN HTML Content ===
+                SITE: %s
+                HTML:
+                -------------------------
+                %s
+                -------------------------
+                =========================
+                
+                === SUPPLEMENTARY HTML Content ===
+                %s
+                ==================================
+                """.formatted(
+                this.url, this.html, supplementaryContent
         );
     }
 }
