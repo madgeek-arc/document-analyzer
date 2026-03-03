@@ -45,6 +45,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WebPageContentExtractor.class);
 
+    private static final int MAX_SUPPLEMENTARY_PAGES = 50;
+    private static final int MIN_PATH_MATCHES = 2;
+
 
     private final HttpUriReader contentReader;
     private final Playwright playwright;
@@ -78,6 +81,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             for (String url : urls) {
                 // keep only English version of pages when it exists
                 uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
+            }
+            if (uniqueUrls.size() > MAX_SUPPLEMENTARY_PAGES) {
+                uniqueUrls = filterUrlsByPathRelevance(uri, uniqueUrls);
             }
         } catch (Exception e) {
             logger.debug(e.getMessage());
@@ -294,6 +300,52 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             }
         }
 
+        return urls;
+    }
+
+    /**
+     * Filters a set of URLs to keep only those most relevant to the given request URI,
+     * based on progressive path-prefix matching. Starting from the deepest path segment,
+     * it broadens by one level at a time until at least {@value MIN_PATH_MATCHES} matching
+     * URLs are found. If no level yields enough matches, all URLs are returned unchanged.
+     *
+     * <p>Example: for {@code https://example.org/en/data/policies?filter=x}, the method
+     * first tries to match URLs whose path starts with {@code /en/data/policies}, then
+     * {@code /en/data}, then {@code /en}, stopping at the first level with enough results.
+     *
+     * @param requestUri the original URI whose path drives the relevance filtering
+     * @param urls       the candidate URL set to filter
+     * @return a filtered set of relevant URLs, or the original set if no filtering applies
+     */
+    static Set<String> filterUrlsByPathRelevance(URI requestUri, Set<String> urls) {
+        String requestPath = requestUri.getPath();
+        if (requestPath == null || requestPath.isEmpty() || requestPath.equals("/")) {
+            return urls;
+        }
+
+        String[] segments = requestPath.split("/");
+        // segments[0] is "" (the part before the leading slash); useful segments start at index 1
+
+        for (int depth = segments.length; depth > 1; depth--) {
+            String prefix = String.join("/", Arrays.copyOfRange(segments, 0, depth));
+            Set<String> matching = new LinkedHashSet<>();
+            for (String url : urls) {
+                try {
+                    String urlPath = URI.create(url).getPath();
+                    if (urlPath != null && urlPath.startsWith(prefix)) {
+                        matching.add(url);
+                    }
+                } catch (IllegalArgumentException e) {
+                    logger.debug("Skipping malformed URL during path filtering: {}", url);
+                }
+            }
+            if (matching.size() >= MIN_PATH_MATCHES) {
+                logger.info("Filtered {} URLs to {} using path prefix '{}'", urls.size(), matching.size(), prefix);
+                return matching;
+            }
+        }
+
+        logger.info("No path-relevant subset found; keeping all {} URLs", urls.size());
         return urls;
     }
 
