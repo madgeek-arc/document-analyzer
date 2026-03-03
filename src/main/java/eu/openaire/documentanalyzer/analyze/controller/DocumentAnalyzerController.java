@@ -18,6 +18,7 @@ package eu.openaire.documentanalyzer.analyze.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
+import eu.openaire.documentanalyzer.common.model.Content;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,7 +37,12 @@ public class DocumentAnalyzerController {
         this.documentAnalyzerService = documentAnalyzerService;
     }
 
-    @GetMapping(value = "/enrich", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/extract", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Content extractContent(@RequestParam URL url) throws URISyntaxException {
+        return documentAnalyzerService.read(url.toURI());
+    }
+
+    @PostMapping(value = "/enrich", produces = MediaType.APPLICATION_JSON_VALUE)
     public JsonNode enrichDocument(@RequestParam URL url, @RequestBody JsonNode jsonTemplate) throws URISyntaxException {
         return documentAnalyzerService.generate(url.toURI(), jsonTemplate);
     }
