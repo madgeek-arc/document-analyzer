@@ -122,6 +122,18 @@ public class HttpUriReader implements UriReader {
         return charset;
     }
 
+    /**
+     * Reads webpage from provided uri and (if found) returns the English page equivalent uri.
+     * Otherwise, returns the provided url.
+     *
+     * @param uri the uri of the website to search
+     * @return the English equivalent webpage url, or the provided uri
+     * @throws IOException
+     */
+    public String detectEnglishHtmlVersion(URI uri) throws IOException {
+        return read(uri).uri().toString();
+    }
+
     private String detectEnglishHtmlVersion(Document doc) {
         Elements hreflangs = doc.select("link[rel=alternate][hreflang]");
         for (Element el : hreflangs) {
