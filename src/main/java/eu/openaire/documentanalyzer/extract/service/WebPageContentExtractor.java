@@ -35,6 +35,7 @@ import org.springframework.retry.annotation.Retryable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
@@ -44,6 +45,15 @@ import java.util.regex.Pattern;
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WebPageContentExtractor.class);
+    private static final Pattern WEBSITE_PATTERN = Pattern.compile(
+            "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|tif|" +   // images
+                    "mp4|mov|avi|mkv|webm|wmv|flv|" +                   // video
+                    "mp3|wav|ogg|flac|aac|wma|" +                       // audio
+//                    "pdf|doc|docx|xls|xlsx|ppt|pptx|" +               // documents
+                    "zip|tar|gz|rar|7z|" +                              // archives
+                    "css|js|woff|woff2|ttf|eot)$",                      // assets
+            Pattern.CASE_INSENSITIVE
+    );
 
     private static final int MAX_SUPPLEMENTARY_PAGES = 50;
     private static final int MIN_PATH_MATCHES = 2;
@@ -72,7 +82,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     public HtmlContent extractWholeSite(URI uri) throws IOException {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
-        Set<String> urls = new LinkedHashSet<>();
+        Set<String> urls;
         Set<String> uniqueUrls = new LinkedHashSet<>();
 
         try {
@@ -81,13 +91,14 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         } catch (Exception e) {
             logger.debug(e.getMessage());
             logger.info("Sitemap not found. Proceeding with provided url.");
+            urls = new LinkedHashSet<>();
         }
 
         for (String url : urls) {
             try {
                 // keep only English version of pages when it exists
                 uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
-            } catch (Throwable e) {
+            } catch (RuntimeException e) {
                 logger.warn("Skipping site: {}", url, e);
             }
         }
@@ -241,7 +252,6 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             }
         }, doc);
 
-        doc.select("header").remove();
         // doc.select("footer").remove(); // Do not remove footer as it usually contains useful links
         doc.select("link[rel=stylesheet]").remove();
         doc.select("link[rel=*icon]").remove();
@@ -279,7 +289,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @return set of urls (insertion-ordered, no duplicates)
      * @throws Exception if sitemap parsing fails
      */
-    public Set<String> extractUrlsFromSitemap(URI url) throws Exception {
+    public Set<String> extractUrlsFromSitemap(URI url) throws IOException, URISyntaxException, UnknownFormatException {
 
         SiteMapParser parser = new SiteMapParser();
         Set<String> urls = new LinkedHashSet<>();
@@ -362,18 +372,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      */
     private Set<String> getOnlyHtmlPages(Collection<String> urls) {
         Set<String> pages = new LinkedHashSet<>();
-        Pattern pattern = Pattern.compile(
-                "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|tif|" +  // images
-                        "mp4|mov|avi|mkv|webm|wmv|flv|" +             // video
-                        "mp3|wav|ogg|flac|aac|wma|" +                 // audio
-//                        "pdf|doc|docx|xls|xlsx|ppt|pptx|" +           // documents
-                        "zip|tar|gz|rar|7z|" +                        // archives
-                        "css|js|woff|woff2|ttf|eot)$",                // assets
-                Pattern.CASE_INSENSITIVE
-        );
         for (String urlString : urls) {
             URI url = URI.create(urlString);
-            if (!pattern.matcher(url.getPath()).find()) {
+            if (!WEBSITE_PATTERN.matcher(url.getPath()).find()) {
                 pages.add(urlString);
             }
         }
