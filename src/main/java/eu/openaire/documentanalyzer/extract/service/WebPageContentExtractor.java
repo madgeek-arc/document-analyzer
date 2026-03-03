@@ -38,9 +38,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
@@ -72,21 +70,24 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
         List<String> urls;
+        Set<String> uniqueUrls = new LinkedHashSet<>();
 
         try {
             urls = extractUrlsFromSitemap(sitemapUrl);
             urls = getOnlyHtmlPages(urls);
-            // TODO: keep only english version of pages when it exists
+            for (String url : urls) {
+                // keep only English version of pages when it exists
+                uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
+            }
         } catch (Exception e) {
             logger.debug(e.getMessage());
             logger.info("Sitemap not found. Proceeding with provided url.");
-            urls = List.of(uri.toString());
         }
 
         // extract content from main site
         HtmlContent content = extractFromUrl(uri.toString());
 
-        for (String url : urls) {
+        for (String url : uniqueUrls) {
             try {
                 // extract content from supplementary sites
                 HtmlContent extra = extractFromUrl(url);
