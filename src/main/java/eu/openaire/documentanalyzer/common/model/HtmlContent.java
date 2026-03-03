@@ -37,6 +37,14 @@ public class HtmlContent extends Content {
         this.extraContent = new LinkedHashMap<>(content.getExtraContent());
     }
 
+    public static HtmlContent of(String url, String html, String text) {
+        HtmlContent content = new HtmlContent();
+        content.setUrl(url);
+        content.setHtml(html);
+        content.setText(text);
+        return content;
+    }
+
     public static HtmlContent of(String html, String text) {
         HtmlContent content = new HtmlContent();
         content.setHtml(html);
