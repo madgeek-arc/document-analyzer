@@ -9,7 +9,7 @@
 	</parent>
 	<groupId>eu.openaire</groupId>
 	<artifactId>document-analyzer</artifactId>
-	<version>1.0.1-SNAPSHOT</version>
+	<version>1.1.0-SNAPSHOT</version>
 	<packaging>jar</packaging>
 	<name>Document Analyzer</name>
 	<description>Project for downloading and enriching html/pdf documents.</description>
