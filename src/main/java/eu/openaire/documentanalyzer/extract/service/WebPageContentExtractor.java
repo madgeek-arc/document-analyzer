@@ -72,22 +72,28 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     public HtmlContent extractWholeSite(URI uri) throws IOException {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
-        List<String> urls;
+        Set<String> urls = new LinkedHashSet<>();
         Set<String> uniqueUrls = new LinkedHashSet<>();
 
         try {
             urls = extractUrlsFromSitemap(sitemapUrl);
             urls = getOnlyHtmlPages(urls);
-            for (String url : urls) {
-                // keep only English version of pages when it exists
-                uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
-            }
-            if (uniqueUrls.size() > MAX_SUPPLEMENTARY_PAGES) {
-                uniqueUrls = filterUrlsByPathRelevance(uri, uniqueUrls);
-            }
         } catch (Exception e) {
             logger.debug(e.getMessage());
             logger.info("Sitemap not found. Proceeding with provided url.");
+        }
+
+        for (String url : urls) {
+            try {
+                // keep only English version of pages when it exists
+                uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
+            } catch (Throwable e) {
+                logger.warn("Skipping site: {}", url, e);
+            }
+        }
+
+        if (uniqueUrls.size() > MAX_SUPPLEMENTARY_PAGES) {
+            uniqueUrls = filterUrlsByPathRelevance(uri, uniqueUrls);
         }
 
         // extract content from main site
@@ -116,7 +122,6 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     @Retryable(retryFor = IOException.class, maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
     // Replace Retryable with RetryTemplate if I decide to implement robots.txt compliant scraping
     public HtmlContent extractFromUrl(String url) throws IOException {
-//        try (BrowserContext context = browser.newContext(); Page page = context.newPage()) {
         try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
                 .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .setExtraHTTPHeaders(Map.of(
@@ -271,13 +276,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * Reads a sitemap url and extracts all site urls.
      *
      * @param url the sitemap url
-     * @return list of urls
+     * @return set of urls (insertion-ordered, no duplicates)
      * @throws Exception if sitemap parsing fails
      */
-    public List<String> extractUrlsFromSitemap(URI url) throws Exception {
+    public Set<String> extractUrlsFromSitemap(URI url) throws Exception {
 
         SiteMapParser parser = new SiteMapParser();
-        List<String> urls = new ArrayList<>();
+        Set<String> urls = new LinkedHashSet<>();
 
         UriReader.Data data = contentReader.read(url);
 
@@ -350,15 +355,15 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     }
 
     /**
-     * Accepts a list of urls and removes all urls resolving to known image, video, audio, archive, asset file types.
+     * Accepts a collection of urls and removes all urls resolving to known image, video, audio, archive, asset file types.
      *
-     * @param urls list of urls
-     * @return cleaned up list of urls (simple urls or document file types)
+     * @param urls collection of urls
+     * @return cleaned up set of urls (simple urls or document file types), insertion-ordered with no duplicates
      */
-    private List<String> getOnlyHtmlPages(List<String> urls) {
-        List<String> pages = new ArrayList<>();
+    private Set<String> getOnlyHtmlPages(Collection<String> urls) {
+        Set<String> pages = new LinkedHashSet<>();
         Pattern pattern = Pattern.compile(
-                "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|" +  // images
+                "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|tif|" +  // images
                         "mp4|mov|avi|mkv|webm|wmv|flv|" +             // video
                         "mp3|wav|ogg|flac|aac|wma|" +                 // audio
 //                        "pdf|doc|docx|xls|xlsx|ppt|pptx|" +           // documents
