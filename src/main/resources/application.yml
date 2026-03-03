@@ -17,7 +17,8 @@ spring:
       api-key:
       chat:
         options:
-          model: gpt-4.1-mini
+          model: gpt-5-mini
+          temperature: 1.0
 
 system-prompt: "
 You are a document extractor and translator.
