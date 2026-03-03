@@ -57,6 +57,10 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final int MAX_SUPPLEMENTARY_PAGES = 50;
     private static final int MIN_PATH_MATCHES = 2;
+    private static final List<String> ATTRS_TO_REMOVE = List.of(
+            "onload", "onclick", "onerror", "onmouseover", "onmouseout",
+            "img", "style", "class", "width", "height", "border", "cellpadding", "cellspacing", "align"
+    );
 
 
     private final HttpUriReader contentReader;
@@ -115,7 +119,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                 // extract content from supplementary sites
                 HtmlContent extra = extractFromUrl(url);
                 content.addExtraContent(extra);
-            } catch (Throwable throwable) {
+            } catch (Exception throwable) {
                 logger.error("Skipping page {}.", url, throwable);
             }
         }
@@ -264,20 +268,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         doc.select("div, span, section").unwrap();
 
         for (Element el : doc.getAllElements()) {
-            el.removeAttr("onload");
-            el.removeAttr("onclick");
-            el.removeAttr("onerror");
-            el.removeAttr("onmouseover");
-            el.removeAttr("onmouseout");
-            el.removeAttr("img");
-            el.removeAttr("style");
-            el.removeAttr("class");
-            el.removeAttr("width");
-            el.removeAttr("height");
-            el.removeAttr("border");
-            el.removeAttr("cellpadding");
-            el.removeAttr("cellspacing");
-            el.removeAttr("align");
+            ATTRS_TO_REMOVE.forEach(el::removeAttr);
         }
         return doc;
     }
@@ -287,10 +278,11 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      *
      * @param url the sitemap url
      * @return set of urls (insertion-ordered, no duplicates)
-     * @throws Exception if sitemap parsing fails
+     * @throws IOException            if the sitemap cannot be read
+     * @throws URISyntaxException     if a child sitemap URL is malformed
+     * @throws UnknownFormatException if the sitemap format is not recognized
      */
     public Set<String> extractUrlsFromSitemap(URI url) throws IOException, URISyntaxException, UnknownFormatException {
-
         SiteMapParser parser = new SiteMapParser();
         Set<String> urls = new LinkedHashSet<>();
 
@@ -373,9 +365,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     private Set<String> getOnlyHtmlPages(Collection<String> urls) {
         Set<String> pages = new LinkedHashSet<>();
         for (String urlString : urls) {
-            URI url = URI.create(urlString);
-            if (!WEBSITE_PATTERN.matcher(url.getPath()).find()) {
-                pages.add(urlString);
+            try {
+                URI url = URI.create(urlString);
+                if (!WEBSITE_PATTERN.matcher(url.getPath()).find()) {
+                    pages.add(urlString);
+                }
+            } catch (IllegalArgumentException e) {
+                logger.debug("Skipping malformed URL: {}", urlString);
             }
         }
         return pages;
