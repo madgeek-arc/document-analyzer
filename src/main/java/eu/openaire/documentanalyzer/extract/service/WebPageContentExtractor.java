@@ -49,7 +49,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|tif|" +   // images
                     "mp4|mov|avi|mkv|webm|wmv|flv|" +                   // video
                     "mp3|wav|ogg|flac|aac|wma|" +                       // audio
-//                    "pdf|doc|docx|xls|xlsx|ppt|pptx|" +               // documents
+                    "pdf|doc|docx|xls|xlsx|ppt|pptx|" +                 // documents
                     "zip|tar|gz|rar|7z|" +                              // archives
                     "css|js|woff|woff2|ttf|eot)$",                      // assets
             Pattern.CASE_INSENSITIVE
