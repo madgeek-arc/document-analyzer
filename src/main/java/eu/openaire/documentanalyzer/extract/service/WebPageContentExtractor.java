@@ -98,6 +98,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             urls = new LinkedHashSet<>();
         }
 
+        if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) { // when sitemap contains too many pages
+            urls = filterUrlsByPathRelevance(uri, urls); // filter out "irrelevant" pages
+        }
         for (String url : urls) {
             try {
                 // keep only English version of pages when it exists
