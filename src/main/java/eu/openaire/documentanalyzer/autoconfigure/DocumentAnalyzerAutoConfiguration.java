@@ -31,10 +31,12 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.retry.annotation.EnableRetry;
 
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 
+@EnableRetry
 @AutoConfiguration
 public class DocumentAnalyzerAutoConfiguration {
 
@@ -67,7 +69,9 @@ public class DocumentAnalyzerAutoConfiguration {
 
     @ConditionalOnClass(DocumentAnalyzerService.class)
     @Bean
-    DocumentAnalyzerService documentAnalyzerService(DocumentContentProcessor documentContentProcessor) throws NoSuchAlgorithmException, KeyManagementException {
-        return new DocumentAnalyzerService(documentContentProcessor);
+    DocumentAnalyzerService documentAnalyzerService(
+            DocumentContentProcessor documentContentProcessor,
+            @Value("${scraping.request-delay-ms:500}") long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
+        return new DocumentAnalyzerService(documentContentProcessor, requestDelayMs);
     }
 }

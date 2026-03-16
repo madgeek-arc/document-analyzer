@@ -42,8 +42,14 @@ public class HttpUriReader implements UriReader {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpUriReader.class);
     private final HttpClient client;
+    private final long requestDelayMs;
 
     public HttpUriReader() throws KeyManagementException, NoSuchAlgorithmException {
+        this(0);
+    }
+
+    public HttpUriReader(long requestDelayMs) throws KeyManagementException, NoSuchAlgorithmException {
+        this.requestDelayMs = requestDelayMs;
         // Trust all certificates
         TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
@@ -71,6 +77,14 @@ public class HttpUriReader implements UriReader {
 
     @Override
     public Data read(URI uri) throws IOException {
+        if (requestDelayMs > 0) {
+            try {
+                Thread.sleep(requestDelayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted while waiting before request to " + uri, e);
+            }
+        }
         try {
             logger.info("Reading url: {}", uri);
             HttpRequest request = HttpRequest
@@ -80,12 +94,18 @@ public class HttpUriReader implements UriReader {
 
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
-            if (response.statusCode() != 200) {
-                throw new RuntimeException(response.toString());
+            int status = response.statusCode();
+            if (status == 429 || status == 503) {
+                String retryAfter = response.headers().firstValue("Retry-After").orElse("unknown");
+                throw new RateLimitException("Rate limited (" + status + ") by " + uri + " — Retry-After: " + retryAfter);
+            } else if (status == 403) {
+                throw new IOException("Access denied (403): " + uri);
+            } else if (status != 200) {
+                throw new IOException("Unexpected HTTP status " + status + " for " + uri);
             }
 
             byte[] bytes;
-            try(InputStream is = response.body()) {
+            try (InputStream is = response.body()) {
                 bytes = is.readAllBytes();
             }
 
@@ -98,7 +118,8 @@ public class HttpUriReader implements UriReader {
             return new Data(uri, bytes);
 
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while reading " + uri, e);
         }
     }
 

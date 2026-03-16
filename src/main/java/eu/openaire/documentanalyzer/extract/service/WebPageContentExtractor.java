@@ -74,6 +74,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     private final HttpUriReader contentReader;
     private final Playwright playwright;
     private final Browser browser;
+    private final long requestDelayMs;
 
     /**
      * Initializes the extractor by creating an {@link HttpUriReader} for sitemap/HTTP fetching
@@ -83,7 +84,20 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws KeyManagementException   if the SSL context configuration fails
      */
     public WebPageContentExtractor() throws NoSuchAlgorithmException, KeyManagementException {
-        this.contentReader = new HttpUriReader();
+        this(0);
+    }
+
+    /**
+     * Initializes the extractor with a configurable inter-request delay to reduce the risk
+     * of triggering rate limits on target servers.
+     *
+     * @param requestDelayMs milliseconds to wait between consecutive HTTP and Playwright requests
+     * @throws NoSuchAlgorithmException if the SSL context cannot be initialized
+     * @throws KeyManagementException   if the SSL context configuration fails
+     */
+    public WebPageContentExtractor(long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
+        this.requestDelayMs = requestDelayMs;
+        this.contentReader = new HttpUriReader(requestDelayMs);
         this.playwright = Playwright.create();
         this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)
@@ -157,6 +171,12 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
         for (String url : uniqueUrls) {
             try {
+                Thread.sleep(requestDelayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            try {
                 // extract content from supplementary sites
                 HtmlContent extra = extractFromUrl(url);
                 content.addExtraContent(extra);
@@ -176,7 +196,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws IOException if navigation times out or Playwright fails to render the page;
      *                     retried up to 3 times with exponential backoff
      */
-    @Retryable(retryFor = IOException.class, maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
+    @Retryable(retryFor = IOException.class, maxAttempts = 4, backoff = @Backoff(delay = 2000, multiplier = 2))
     // Replace Retryable with RetryTemplate if I decide to implement robots.txt compliant scraping
     public HtmlContent extractFromUrl(String url) throws IOException {
         try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
@@ -185,9 +205,17 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                         "Accept-Language", "en-US,en;q=0.9",
                         "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
                 ))); Page page = context.newPage()) {
-            page.navigate(url, new Page.NavigateOptions()
+            com.microsoft.playwright.Response response = page.navigate(url, new Page.NavigateOptions()
                     .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
                     .setTimeout(60000));
+            if (response != null) {
+                int status = response.status();
+                if (status == 429 || status == 503) {
+                    throw new RateLimitException("Rate limited (" + status + "): " + url);
+                } else if (status == 403) {
+                    throw new IOException("Access denied (403): " + url);
+                }
+            }
             try {
                 page.waitForLoadState(LoadState.NETWORKIDLE,
                         new Page.WaitForLoadStateOptions().setTimeout(60000));

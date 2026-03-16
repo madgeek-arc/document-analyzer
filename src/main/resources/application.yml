@@ -20,6 +20,9 @@ spring:
           model: gpt-5-mini
           temperature: 1.0
 
+scraping:
+  request-delay-ms: 500
+
 system-prompt: "
 You are a document extractor and translator.
 You always output what requested and nothing else.
