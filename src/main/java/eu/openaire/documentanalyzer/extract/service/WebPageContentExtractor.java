@@ -67,6 +67,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     private final Playwright playwright;
     private final Browser browser;
 
+    /**
+     * Initializes the extractor by creating an {@link HttpUriReader} for sitemap/HTTP fetching
+     * and launching a headless Chromium browser via Playwright for JavaScript-rendered page scraping.
+     *
+     * @throws NoSuchAlgorithmException if the SSL context cannot be initialized
+     * @throws KeyManagementException   if the SSL context configuration fails
+     */
     public WebPageContentExtractor() throws NoSuchAlgorithmException, KeyManagementException {
         this.contentReader = new HttpUriReader();
         this.playwright = Playwright.create();
@@ -81,7 +88,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      *
      * @param uri the uri to extract content from
      * @return the extracted content
-     * @throws IOException
+     * @throws IOException if the main page cannot be fetched or rendered
      */
     public HtmlContent extractWholeSite(URI uri) throws IOException {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
@@ -113,6 +120,16 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         return content;
     }
 
+    /**
+     * Enriches the given content by scraping supplementary pages from the provided URL set.
+     * For each URL, the English version is preferred when available. If the resolved set exceeds
+     * {@value MAX_SUPPLEMENTARY_PAGES}, it is narrowed down by path relevance before scraping.
+     *
+     * @param content the base content to enrich
+     * @param uri     the original request URI, used as reference for path-relevance filtering
+     * @param urls    candidate supplementary URLs (must be at most {@code 2 * MAX_SUPPLEMENTARY_PAGES})
+     * @return the enriched content
+     */
     private HtmlContent enrichContentUsingSupplementaryUrls(HtmlContent content, URI uri, Set<String> urls) {
         Set<String> uniqueUrls = new LinkedHashSet<>();
 
@@ -148,7 +165,8 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      *
      * @param url the url to render and extract content
      * @return the extracted content
-     * @throws IOException
+     * @throws IOException if navigation times out or Playwright fails to render the page;
+     *                     retried up to 3 times with exponential backoff
      */
     @Retryable(retryFor = IOException.class, maxAttempts = 3, backoff = @Backoff(delay = 500, multiplier = 2))
     // Replace Retryable with RetryTemplate if I decide to implement robots.txt compliant scraping
@@ -181,7 +199,12 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     /**
      * Loads raw HTML bytes into Playwright for rendering (executes inline scripts),
-     * then extracts and cleans the result.
+     * then extracts and cleans the result. Falls back to direct Jsoup parsing if
+     * Playwright rendering fails.
+     *
+     * @param data raw HTML bytes (UTF-8 encoded)
+     * @return the extracted content
+     * @throws IOException never thrown directly; declared by the interface
      */
     @Override
     public HtmlContent extract(byte[] data) throws IOException {
@@ -197,12 +220,21 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         }
     }
 
+    /**
+     * Closes the Playwright browser and the Playwright instance, releasing all associated resources.
+     */
     @Override
     public void close() {
         browser.close();
         playwright.close();
     }
 
+    /**
+     * Parses and cleans an HTML string, then extracts structured metadata and plain text from it.
+     *
+     * @param htmlData raw HTML string
+     * @return the extracted content with metadata, plain text, and the cleaned HTML
+     */
     private HtmlContent extractHtmlContent(String htmlData) {
         Document doc = clean(Jsoup.parse(htmlData));
 
@@ -216,6 +248,14 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         return content;
     }
 
+    /**
+     * Extracts plain text from meaningful content elements ({@code p, h1–h6, li, blockquote, br}).
+     * Removes {@code header} and {@code footer} elements before extraction.
+     * Paragraphs and headings are separated by blank lines; other elements by a single newline.
+     *
+     * @param doc the cleaned Jsoup document
+     * @return extracted plain text
+     */
     private static String extractText(Document doc) {
         StringBuilder builder = new StringBuilder();
 
@@ -238,6 +278,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         return builder.toString();
     }
 
+    /**
+     * Extracts metadata from all {@code <meta>} tags in the document, using {@code name},
+     * {@code property}, or {@code http-equiv} as the key, and appends the document title.
+     *
+     * @param document the Jsoup document
+     * @return a newline-separated string of {@code key: value} metadata entries
+     */
     private static String extractMetadata(Document document) {
         StringBuilder metadataBuilder = new StringBuilder();
 
@@ -256,6 +303,15 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     }
 
 
+    /**
+     * Cleans a Jsoup document for content extraction by removing noise elements and attributes.
+     * Specifically: strips HTML comments, stylesheets, scripts, media elements (images, video,
+     * iframes), and layout-only tags ({@code div, span, section, font}). Also removes presentation
+     * and event-handler attributes listed in {@link #ATTRS_TO_REMOVE}.
+     *
+     * @param doc the document to clean (modified in place)
+     * @return the same document, cleaned
+     */
     private static Document clean(Document doc) {
         // remove comments and webpage header
         NodeTraversor.traverse(new NodeVisitor() {
