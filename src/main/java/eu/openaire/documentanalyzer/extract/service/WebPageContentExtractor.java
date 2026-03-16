@@ -58,8 +58,16 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     private static final int MAX_SUPPLEMENTARY_PAGES = 50;
     private static final int MIN_PATH_MATCHES = 2;
     private static final List<String> ATTRS_TO_REMOVE = List.of(
+            // event handlers
             "onload", "onclick", "onerror", "onmouseover", "onmouseout",
-            "img", "style", "class", "width", "height", "border", "cellpadding", "cellspacing", "align"
+            "onkeydown", "onkeyup", "onkeypress", "onchange", "onsubmit",
+            "onfocus", "onblur", "ondblclick", "onmousedown", "onmouseup",
+            "onmouseenter", "onmouseleave", "oninput", "onselect",
+            "onpaste", "oncopy", "ondrag", "ondrop", "onscroll", "onresize",
+            // presentation
+            "style", "class", "width", "height", "border", "cellpadding", "cellspacing", "align",
+            // technical/navigation noise
+            "tabindex", "target", "rel", "id"
     );
 
 
@@ -306,8 +314,10 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     /**
      * Cleans a Jsoup document for content extraction by removing noise elements and attributes.
      * Specifically: strips HTML comments, stylesheets, scripts, media elements (images, video,
-     * iframes), and layout-only tags ({@code div, span, section, font}). Also removes presentation
-     * and event-handler attributes listed in {@link #ATTRS_TO_REMOVE}.
+     * iframes), and layout-only tags ({@code div, span, section, font}). Also removes all
+     * event-handler, presentation, and technical/navigation attributes listed in
+     * {@link #ATTRS_TO_REMOVE}, while preserving content-bearing attributes such as
+     * {@code href}, {@code title}, {@code aria-label}, {@code colspan}, and {@code rowspan}.
      *
      * @param doc the document to clean (modified in place)
      * @return the same document, cleaned
