@@ -87,7 +87,6 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
         Set<String> urls;
-        Set<String> uniqueUrls = new LinkedHashSet<>();
 
         try {
             urls = extractUrlsFromSitemap(sitemapUrl);
@@ -101,11 +100,28 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) { // when sitemap contains too many pages
             urls = filterUrlsByPathRelevance(uri, urls); // filter out "irrelevant" pages
         }
+
+        // extract content from main site
+        HtmlContent content = extractFromUrl(uri.toString());
+
+        if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) {
+            logger.warn("Too many supplementary pages provided... Skipping scraping.");
+        } else {
+            content = enrichContentUsingSupplementaryUrls(content, uri, urls);
+        }
+
+        return content;
+    }
+
+    private HtmlContent enrichContentUsingSupplementaryUrls(HtmlContent content, URI uri, Set<String> urls) {
+        Set<String> uniqueUrls = new LinkedHashSet<>();
+
+        // enrich content with supplementary sites
         for (String url : urls) {
             try {
                 // keep only English version of pages when it exists
                 uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
-            } catch (RuntimeException e) {
+            } catch (Exception e) {
                 logger.warn("Skipping site: {}", url, e);
             }
         }
@@ -113,9 +129,6 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         if (uniqueUrls.size() > MAX_SUPPLEMENTARY_PAGES) {
             uniqueUrls = filterUrlsByPathRelevance(uri, uniqueUrls);
         }
-
-        // extract content from main site
-        HtmlContent content = extractFromUrl(uri.toString());
 
         for (String url : uniqueUrls) {
             try {
@@ -148,7 +161,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                 ))); Page page = context.newPage()) {
             page.navigate(url, new Page.NavigateOptions()
                     .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
-                    .setTimeout(100000));
+                    .setTimeout(60000));
             try {
                 page.waitForLoadState(LoadState.NETWORKIDLE,
                         new Page.WaitForLoadStateOptions().setTimeout(60000));
