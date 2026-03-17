@@ -160,6 +160,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             try {
                 // keep only English version of pages when it exists
                 uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
+            } catch (DeferredContentException e) {
+                logger.debug("Got 202 for {}, will use Playwright directly", url);
+                uniqueUrls.add(url);
             } catch (Exception e) {
                 logger.warn("Skipping site: {}", url, e);
             }

@@ -89,7 +89,11 @@ public class HttpUriReader implements UriReader {
             logger.info("Reading url: {}", uri);
             HttpRequest request = HttpRequest
                     .newBuilder(uri)
-                    .header("User-Agent", "Mozilla/5.0 (Java HttpClient)")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
                     .build();
 
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
@@ -98,6 +102,8 @@ public class HttpUriReader implements UriReader {
             if (status == 429 || status == 503) {
                 String retryAfter = response.headers().firstValue("Retry-After").orElse("unknown");
                 throw new RateLimitException("Rate limited (" + status + ") by " + uri + " — Retry-After: " + retryAfter);
+            } else if (status == 202) {
+                throw new DeferredContentException("Deferred response (202) for " + uri + " — use Playwright to render");
             } else if (status == 403) {
                 throw new IOException("Access denied (403): " + uri);
             } else if (status != 200) {

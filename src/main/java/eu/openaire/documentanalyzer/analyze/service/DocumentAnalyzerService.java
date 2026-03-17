@@ -20,10 +20,7 @@ package eu.openaire.documentanalyzer.analyze.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.common.model.Content;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
-import eu.openaire.documentanalyzer.extract.service.HttpUriReader;
-import eu.openaire.documentanalyzer.extract.service.PdfContentExtractor;
-import eu.openaire.documentanalyzer.extract.service.UriReader;
-import eu.openaire.documentanalyzer.extract.service.WebPageContentExtractor;
+import eu.openaire.documentanalyzer.extract.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +53,12 @@ public class DocumentAnalyzerService implements Closeable {
                 return pdfExtractor.extract(raw.data());
             } else {
                 return webPageExtractor.extractWholeSite(raw.uri());
+            }
+        } catch (DeferredContentException e) {
+            try {
+                return webPageExtractor.extractFromUrl(uri.toString());
+            } catch (IOException inner) {
+                throw new RuntimeException(inner);
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
