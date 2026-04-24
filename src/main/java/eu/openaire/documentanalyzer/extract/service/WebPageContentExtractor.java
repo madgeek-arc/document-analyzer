@@ -130,24 +130,22 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     public HtmlContent extractWholeSite(URI uri) throws IOException {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
-        Set<String> urls;
+        Set<String> urls = new LinkedHashSet<>();
+        HtmlContent content = extractFromUrl(uri.toString());
 
         try {
-            urls = extractUrlsFromSitemap(sitemapUrl);
-            urls = getOnlyHtmlPages(urls);
+            urls.addAll(getOnlyHtmlPages(extractUrlsFromSitemap(sitemapUrl)));
         } catch (Exception e) {
             logger.debug(e.getMessage());
             logger.info("Sitemap not found. Proceeding with provided url.");
-            urls = new LinkedHashSet<>();
         }
+        urls.addAll(extractSameDomainUrls(content, uri));
 
         if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) { // when sitemap contains too many pages
             urls = filterUrlsByPathRelevance(uri, urls); // filter out "irrelevant" pages
         }
         urls = limitSupplementaryUrls(uri, urls);
 
-        // extract content from main site
-        HtmlContent content = extractFromUrl(uri.toString());
         return enrichContentUsingSupplementaryUrls(content, uri, urls);
     }
 
@@ -467,8 +465,12 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             SiteMapIndex index = (SiteMapIndex) abstractSiteMap;
 
             for (AbstractSiteMap childSiteMap : index.getSitemaps()) {
-                // recurse into each child sitemap
-                urls.addAll(extractUrlsFromSitemap(childSiteMap.getUrl().toURI()));
+                try {
+                    // recurse into each child sitemap
+                    urls.addAll(extractUrlsFromSitemap(childSiteMap.getUrl().toURI()));
+                } catch (Exception e) {
+                    logger.debug("Skipping child sitemap {}", childSiteMap.getUrl(), e);
+                }
             }
         } else {
             // regular sitemap — contains actual URLs
@@ -479,6 +481,38 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             }
         }
 
+        return urls;
+    }
+
+    static Set<String> extractSameDomainUrls(HtmlContent content, URI requestUri) {
+        Set<String> urls = new LinkedHashSet<>();
+        if (content == null || content.getHtml() == null || requestUri.getHost() == null) {
+            return urls;
+        }
+
+        Document doc = Jsoup.parse(content.getHtml(), requestUri.toString());
+        String requestHost = requestUri.getHost().toLowerCase();
+        for (Element link : doc.select("a[href]")) {
+            String href = link.attr("abs:href");
+            if (href.isBlank()) {
+                continue;
+            }
+            try {
+                URI uri = URI.create(href);
+                String host = uri.getHost();
+                if (host == null || !host.equalsIgnoreCase(requestHost)) {
+                    continue;
+                }
+                String scheme = uri.getScheme();
+                if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+                    continue;
+                }
+                urls.add(uri.toString());
+            } catch (IllegalArgumentException e) {
+                logger.debug("Skipping malformed same-domain link: {}", href);
+            }
+        }
+        urls.remove(requestUri.toString());
         return urls;
     }
 

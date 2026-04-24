@@ -16,6 +16,7 @@
 
 package eu.openaire.documentanalyzer.extract.service;
 
+import eu.openaire.documentanalyzer.common.model.HtmlContent;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -240,6 +241,27 @@ class WebPageContentExtractorFilterTest {
                         "https://example.org/en/data/page-48",
                         "https://example.org/en/data/page-49"
                 )
+        );
+    }
+
+    @Test
+    void extractSameDomainUrls_returnsAbsoluteLinksOnSameHostOnly() {
+        HtmlContent content = HtmlContent.of("""
+                <html><body>
+                <a href="/en/page-a">A</a>
+                <a href="https://example.org/en/page-b">B</a>
+                <a href="https://other.org/en/page-c">C</a>
+                <a href="#section">D</a>
+                </body></html>
+                """, "text");
+        URI request = URI.create("https://example.org/en/home");
+
+        Set<String> result = WebPageContentExtractor.extractSameDomainUrls(content, request);
+
+        assertThat(result).containsExactly(
+                "https://example.org/en/page-a",
+                "https://example.org/en/page-b",
+                "https://example.org/en/home#section"
         );
     }
 }
