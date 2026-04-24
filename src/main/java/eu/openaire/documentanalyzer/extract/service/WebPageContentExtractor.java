@@ -18,6 +18,7 @@ package eu.openaire.documentanalyzer.extract.service;
 
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.WaitForSelectorState;
 import com.microsoft.playwright.options.WaitUntilState;
 import crawlercommons.sitemaps.*;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
@@ -47,6 +48,14 @@ import java.util.regex.Pattern;
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(WebPageContentExtractor.class);
+    private static final List<String> CONTENT_READY_SELECTORS = List.of(
+            "main",
+            "article",
+            "body p",
+            "body li",
+            "h1",
+            "[role=main]"
+    );
     private static final Pattern WEBSITE_PATTERN = Pattern.compile(
             "\\.(jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff|tif|" +   // images
                     "mp4|mov|avi|mkv|webm|wmv|flv|" +                   // video
@@ -135,17 +144,11 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) { // when sitemap contains too many pages
             urls = filterUrlsByPathRelevance(uri, urls); // filter out "irrelevant" pages
         }
+        urls = limitSupplementaryUrls(uri, urls);
 
         // extract content from main site
         HtmlContent content = extractFromUrl(uri.toString());
-
-        if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) {
-            logger.warn("Too many supplementary pages provided... Skipping scraping.");
-        } else {
-            content = enrichContentUsingSupplementaryUrls(content, uri, urls);
-        }
-
-        return content;
+        return enrichContentUsingSupplementaryUrls(content, uri, urls);
     }
 
     /**
@@ -181,7 +184,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         }
 
         if (uniqueUrls.size() > MAX_SUPPLEMENTARY_PAGES) {
-            uniqueUrls = filterUrlsByPathRelevance(uri, uniqueUrls);
+            uniqueUrls = limitSupplementaryUrls(uri, filterUrlsByPathRelevance(uri, uniqueUrls));
         }
 
         for (String url : uniqueUrls) {
@@ -240,11 +243,12 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                         throw new RobotsDisallowedException("X-Robots-Tag disallows indexing: " + url);
                     }
                 }
+                waitForMeaningfulContent(page, url);
                 try {
                     page.waitForLoadState(LoadState.NETWORKIDLE,
-                            new Page.WaitForLoadStateOptions().setTimeout(60000));
+                            new Page.WaitForLoadStateOptions().setTimeout(5000));
                 } catch (PlaywrightException e) {
-                    logger.debug("Network idle timeout for {}, proceeding with current state", url);
+                    logger.debug("Network idle timeout for {}, proceeding after content became available", url);
                 }
                 String renderedHtml = page.content();
                 // Check <meta name="robots"> or <meta name="googlebot"> in rendered HTML
@@ -292,6 +296,21 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         } finally {
             browserLock.unlock();
         }
+    }
+
+    private void waitForMeaningfulContent(Page page, String url) {
+        for (String selector : CONTENT_READY_SELECTORS) {
+            try {
+                page.waitForSelector(selector, new Page.WaitForSelectorOptions()
+                        .setState(WaitForSelectorState.ATTACHED)
+                        .setTimeout(5000));
+                logger.debug("Content selector '{}' became available for {}", selector, url);
+                return;
+            } catch (PlaywrightException e) {
+                logger.trace("Selector '{}' did not become available for {}", selector, url);
+            }
+        }
+        logger.debug("No preferred content selector became available for {}, proceeding with current state", url);
     }
 
     /**
@@ -507,6 +526,69 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
         logger.info("No path-relevant subset found; keeping all {} URLs", urls.size());
         return urls;
+    }
+
+    static Set<String> limitSupplementaryUrls(URI requestUri, Set<String> urls) {
+        if (urls.size() <= MAX_SUPPLEMENTARY_PAGES) {
+            return urls;
+        }
+
+        List<String> sorted = new ArrayList<>(urls);
+        Map<String, Integer> originalOrder = new HashMap<>();
+        int position = 0;
+        for (String url : urls) {
+            originalOrder.put(url, position++);
+        }
+        sorted.sort(Comparator
+                .comparingInt((String url) -> pathDistance(requestUri, url))
+                .thenComparingInt(WebPageContentExtractor::pathDepth)
+                .thenComparingInt(url -> originalOrder.getOrDefault(url, Integer.MAX_VALUE)));
+
+        LinkedHashSet<String> limited = new LinkedHashSet<>();
+        for (String url : sorted) {
+            limited.add(url);
+            if (limited.size() == MAX_SUPPLEMENTARY_PAGES) {
+                break;
+            }
+        }
+
+        logger.info("Limited supplementary URLs from {} to {} for {}", urls.size(), limited.size(), requestUri);
+        return limited;
+    }
+
+    private static int pathDistance(URI requestUri, String url) {
+        try {
+            URI candidate = URI.create(url);
+            String[] requestSegments = nonEmptyPathSegments(requestUri.getPath());
+            String[] candidateSegments = nonEmptyPathSegments(candidate.getPath());
+            int sharedPrefix = 0;
+            while (sharedPrefix < requestSegments.length
+                    && sharedPrefix < candidateSegments.length
+                    && requestSegments[sharedPrefix].equals(candidateSegments[sharedPrefix])) {
+                sharedPrefix++;
+            }
+            return (requestSegments.length - sharedPrefix) + (candidateSegments.length - sharedPrefix);
+        } catch (IllegalArgumentException e) {
+            logger.debug("Skipping malformed URL during supplementary URL limiting: {}", url);
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private static int pathDepth(String url) {
+        try {
+            return nonEmptyPathSegments(URI.create(url).getPath()).length;
+        } catch (IllegalArgumentException e) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private static String[] nonEmptyPathSegments(String path) {
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            return new String[0];
+        }
+        return Arrays.stream(path.split("/"))
+                .filter(segment -> !segment.isBlank())
+                .toArray(String[]::new);
     }
 
     /**

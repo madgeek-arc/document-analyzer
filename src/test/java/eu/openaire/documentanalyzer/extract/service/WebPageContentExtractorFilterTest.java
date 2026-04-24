@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -150,6 +151,95 @@ class WebPageContentExtractorFilterTest {
                 "https://example.org/en/data/first",
                 "https://example.org/en/data/second",
                 "https://example.org/en/data/third"
+        );
+    }
+
+    @Test
+    void limitSupplementaryUrls_keepsClosestPathsWhenTooMany() {
+        URI request = URI.create("https://example.org/en/data/policies");
+        Set<String> candidates = new LinkedHashSet<>();
+        candidates.add("https://example.org/en/data/policies/a");
+        candidates.add("https://example.org/en/data/policies/b");
+        candidates.add("https://example.org/en/data/repository");
+        candidates.add("https://example.org/en/about");
+        candidates.add("https://example.org/contact");
+
+        for (int i = 0; i < 55; i++) {
+            candidates.add("https://example.org/misc/page-" + i);
+        }
+
+        Set<String> result = WebPageContentExtractor.limitSupplementaryUrls(request, candidates);
+
+        assertThat(result).hasSize(50);
+        assertThat(result).contains("https://example.org/en/data/policies/a");
+        assertThat(result).contains("https://example.org/en/data/policies/b");
+        assertThat(result).contains("https://example.org/en/data/repository");
+        assertThat(result).doesNotContain("https://example.org/misc/page-49");
+    }
+
+    @Test
+    void limitSupplementaryUrls_preservesOriginalOrderAmongEquallyRelevantUrls() {
+        URI request = URI.create("https://example.org/en/data");
+        Set<String> candidates = new LinkedHashSet<>();
+        for (int i = 0; i < 55; i++) {
+            candidates.add("https://example.org/en/data/page-" + i);
+        }
+
+        Set<String> result = WebPageContentExtractor.limitSupplementaryUrls(request, candidates);
+
+        assertThat(result).containsExactlyElementsOf(
+                List.of(
+                        "https://example.org/en/data/page-0",
+                        "https://example.org/en/data/page-1",
+                        "https://example.org/en/data/page-2",
+                        "https://example.org/en/data/page-3",
+                        "https://example.org/en/data/page-4",
+                        "https://example.org/en/data/page-5",
+                        "https://example.org/en/data/page-6",
+                        "https://example.org/en/data/page-7",
+                        "https://example.org/en/data/page-8",
+                        "https://example.org/en/data/page-9",
+                        "https://example.org/en/data/page-10",
+                        "https://example.org/en/data/page-11",
+                        "https://example.org/en/data/page-12",
+                        "https://example.org/en/data/page-13",
+                        "https://example.org/en/data/page-14",
+                        "https://example.org/en/data/page-15",
+                        "https://example.org/en/data/page-16",
+                        "https://example.org/en/data/page-17",
+                        "https://example.org/en/data/page-18",
+                        "https://example.org/en/data/page-19",
+                        "https://example.org/en/data/page-20",
+                        "https://example.org/en/data/page-21",
+                        "https://example.org/en/data/page-22",
+                        "https://example.org/en/data/page-23",
+                        "https://example.org/en/data/page-24",
+                        "https://example.org/en/data/page-25",
+                        "https://example.org/en/data/page-26",
+                        "https://example.org/en/data/page-27",
+                        "https://example.org/en/data/page-28",
+                        "https://example.org/en/data/page-29",
+                        "https://example.org/en/data/page-30",
+                        "https://example.org/en/data/page-31",
+                        "https://example.org/en/data/page-32",
+                        "https://example.org/en/data/page-33",
+                        "https://example.org/en/data/page-34",
+                        "https://example.org/en/data/page-35",
+                        "https://example.org/en/data/page-36",
+                        "https://example.org/en/data/page-37",
+                        "https://example.org/en/data/page-38",
+                        "https://example.org/en/data/page-39",
+                        "https://example.org/en/data/page-40",
+                        "https://example.org/en/data/page-41",
+                        "https://example.org/en/data/page-42",
+                        "https://example.org/en/data/page-43",
+                        "https://example.org/en/data/page-44",
+                        "https://example.org/en/data/page-45",
+                        "https://example.org/en/data/page-46",
+                        "https://example.org/en/data/page-47",
+                        "https://example.org/en/data/page-48",
+                        "https://example.org/en/data/page-49"
+                )
         );
     }
 }
