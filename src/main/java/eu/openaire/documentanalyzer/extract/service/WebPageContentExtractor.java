@@ -40,6 +40,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 public class WebPageContentExtractor implements ContentExtractor, Closeable {
@@ -72,8 +74,10 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
 
     private final HttpUriReader contentReader;
+    private final RobotsCache robotsCache;
     private final Playwright playwright;
     private final Browser browser;
+    private final Lock browserLock = new ReentrantLock();
     private final long requestDelayMs;
 
     /**
@@ -98,6 +102,8 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     public WebPageContentExtractor(long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
         this.requestDelayMs = requestDelayMs;
         this.contentReader = new HttpUriReader(requestDelayMs);
+        // Robots.txt is fetched once per origin and cached
+        this.robotsCache = new RobotsCache(new HttpUriReader(0));
         this.playwright = Playwright.create();
         this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)
@@ -157,9 +163,15 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
         // enrich content with supplementary sites
         for (String url : urls) {
+            if (!robotsCache.isAllowed(url)) {
+                logger.debug("robots.txt disallows {}, skipping", url);
+                continue;
+            }
             try {
                 // keep only English version of pages when it exists
                 uniqueUrls.add(contentReader.detectEnglishHtmlVersion(URI.create(url)));
+            } catch (RobotsDisallowedException e) {
+                logger.debug("Skipping {} — robots directive disallows indexing", url);
             } catch (DeferredContentException e) {
                 logger.debug("Got 202 for {}, will use Playwright directly", url);
                 uniqueUrls.add(url);
@@ -183,6 +195,8 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                 // extract content from supplementary sites
                 HtmlContent extra = extractFromUrl(url);
                 content.addExtraContent(extra);
+            } catch (RobotsDisallowedException e) {
+                logger.debug("Skipping {} — robots directive disallows indexing", url);
             } catch (Exception throwable) {
                 logger.error("Skipping page {}.", url, throwable);
             }
@@ -199,40 +213,56 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws IOException if navigation times out or Playwright fails to render the page;
      *                     retried up to 3 times with exponential backoff
      */
-    @Retryable(retryFor = IOException.class, maxAttempts = 4, backoff = @Backoff(delay = 2000, multiplier = 2))
-    // Replace Retryable with RetryTemplate if I decide to implement robots.txt compliant scraping
+    @Retryable(retryFor = IOException.class, noRetryFor = {RobotsDisallowedException.class},
+            maxAttempts = 4, backoff = @Backoff(delay = 2000, multiplier = 2))
     public HtmlContent extractFromUrl(String url) throws IOException {
-        try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
-                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .setExtraHTTPHeaders(Map.of(
-                        "Accept-Language", "en-US,en;q=0.9",
-                        "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-                ))); Page page = context.newPage()) {
-            com.microsoft.playwright.Response response = page.navigate(url, new Page.NavigateOptions()
-                    .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
-                    .setTimeout(60000));
-            if (response != null) {
-                int status = response.status();
-                if (status == 429 || status == 503) {
-                    throw new RateLimitException("Rate limited (" + status + "): " + url);
-                } else if (status == 403) {
-                    throw new IOException("Access denied (403): " + url);
+        browserLock.lock();
+        try {
+            try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+                    .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .setExtraHTTPHeaders(Map.of(
+                            "Accept-Language", "en-US,en;q=0.9",
+                            "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                    ))); Page page = context.newPage()) {
+                com.microsoft.playwright.Response response = page.navigate(url, new Page.NavigateOptions()
+                        .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+                        .setTimeout(60000));
+                if (response != null) {
+                    int status = response.status();
+                    if (status == 429 || status == 503) {
+                        throw new RateLimitException("Rate limited (" + status + "): " + url);
+                    } else if (status == 403) {
+                        throw new IOException("Access denied (403): " + url);
+                    }
+                    // Check X-Robots-Tag header
+                    String xRobotsTag = response.headers().get("x-robots-tag");
+                    if (xRobotsTag != null && HttpUriReader.isNoIndex(xRobotsTag)) {
+                        throw new RobotsDisallowedException("X-Robots-Tag disallows indexing: " + url);
+                    }
                 }
-            }
-            try {
-                page.waitForLoadState(LoadState.NETWORKIDLE,
-                        new Page.WaitForLoadStateOptions().setTimeout(60000));
+                try {
+                    page.waitForLoadState(LoadState.NETWORKIDLE,
+                            new Page.WaitForLoadStateOptions().setTimeout(60000));
+                } catch (PlaywrightException e) {
+                    logger.debug("Network idle timeout for {}, proceeding with current state", url);
+                }
+                String renderedHtml = page.content();
+                // Check <meta name="robots"> or <meta name="googlebot"> in rendered HTML
+                Document metaDoc = Jsoup.parse(renderedHtml);
+                Element robotsMeta = metaDoc.selectFirst("meta[name=robots], meta[name=googlebot]");
+                if (robotsMeta != null && HttpUriReader.isNoIndex(robotsMeta.attr("content"))) {
+                    throw new RobotsDisallowedException("Meta robots disallows indexing: " + url);
+                }
+                HtmlContent content = extractHtmlContent(renderedHtml);
+                content.setUrl(url);
+                return content;
+            } catch (TimeoutError e) {
+                throw new IOException("Navigation timeout for " + url);
             } catch (PlaywrightException e) {
-                logger.debug("Network idle timeout for {}, proceeding with current state", url);
+                throw new IOException("Playwright failed to render page: " + url, e);
             }
-            String renderedHtml = page.content();
-            HtmlContent content = extractHtmlContent(renderedHtml);
-            content.setUrl(url);
-            return content;
-        } catch (TimeoutError e) {
-            throw new IOException("Navigation timeout for " + url);
-        } catch (PlaywrightException e) {
-            throw new IOException("Playwright failed to render page: " + url, e);
+        } finally {
+            browserLock.unlock();
         }
     }
 
@@ -248,14 +278,19 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     @Override
     public HtmlContent extract(byte[] data) throws IOException {
         String htmlData = new String(data, StandardCharsets.UTF_8);
-        try (BrowserContext context = browser.newContext()) {
-            Page page = context.newPage();
-            page.setContent(htmlData);
-            String renderedHtml = page.content();
-            return extractHtmlContent(renderedHtml);
-        } catch (PlaywrightException e) {
-            logger.warn("Playwright rendering failed, falling back to raw HTML parsing", e);
-            return extractHtmlContent(htmlData);
+        browserLock.lock();
+        try {
+            try (BrowserContext context = browser.newContext()) {
+                Page page = context.newPage();
+                page.setContent(htmlData);
+                String renderedHtml = page.content();
+                return extractHtmlContent(renderedHtml);
+            } catch (PlaywrightException e) {
+                logger.warn("Playwright rendering failed, falling back to raw HTML parsing", e);
+                return extractHtmlContent(htmlData);
+            }
+        } finally {
+            browserLock.unlock();
         }
     }
 
@@ -264,8 +299,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      */
     @Override
     public void close() {
-        browser.close();
-        playwright.close();
+        browserLock.lock();
+        try {
+            browser.close();
+            playwright.close();
+        } finally {
+            browserLock.unlock();
+        }
     }
 
     /**

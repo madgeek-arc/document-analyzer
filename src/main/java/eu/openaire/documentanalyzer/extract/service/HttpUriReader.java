@@ -24,11 +24,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -110,6 +112,14 @@ public class HttpUriReader implements UriReader {
                 throw new IOException("Unexpected HTTP status " + status + " for " + uri);
             }
 
+            String contentType = response.headers().firstValue("Content-Type").orElse("");
+            if (contentType.contains("text/html")) {
+                Optional<String> xRobotsTag = response.headers().firstValue("X-Robots-Tag");
+                if (xRobotsTag.isPresent() && isNoIndex(xRobotsTag.get())) {
+                    throw new RobotsDisallowedException("X-Robots-Tag disallows indexing: " + uri);
+                }
+            }
+
             byte[] bytes;
             try (InputStream is = response.body()) {
                 bytes = is.readAllBytes();
@@ -123,10 +133,74 @@ public class HttpUriReader implements UriReader {
             }
             return new Data(uri, bytes);
 
+        } catch (SSLHandshakeException e) {
+            Optional<URI> fallbackUri = certificateHostnameFallback(uri, e);
+            if (fallbackUri.isPresent()) {
+                logger.warn("Retrying {} as {} due to TLS hostname mismatch", uri, fallbackUri.get());
+                return read(fallbackUri.get());
+            }
+            throw e;
+        } catch (RobotsDisallowedException e) {
+            throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while reading " + uri, e);
         }
+    }
+
+    /**
+     * Returns {@code true} if the given robots directive string contains {@code noindex} or
+     * {@code none} (which implies noindex). Handles comma/semicolon-separated directives and
+     * optional whitespace.
+     *
+     * @param directives the value of an {@code X-Robots-Tag} header or {@code <meta name="robots">} content
+     * @return whether the directive instructs bots not to index the page
+     */
+    static boolean isNoIndex(String directives) {
+        for (String token : directives.toLowerCase().split("[,;\\s]+")) {
+            if (token.equals("noindex") || token.equals("none")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // TODO: check this method
+    //   retry bare host on TLS SAN mismatch for www URLs
+    static Optional<URI> certificateHostnameFallback(URI uri, SSLHandshakeException exception) {
+        String host = uri.getHost();
+        if (host == null || !host.startsWith("www.") || host.length() <= 4) {
+            return Optional.empty();
+        }
+        if (!isHostnameMismatch(exception)) {
+            return Optional.empty();
+        }
+
+        String fallbackHost = host.substring(4);
+        try {
+            return Optional.of(new URI(
+                    uri.getScheme(),
+                    uri.getUserInfo(),
+                    fallbackHost,
+                    uri.getPort(),
+                    uri.getPath(),
+                    uri.getQuery(),
+                    uri.getFragment()
+            ));
+        } catch (URISyntaxException e) {
+            logger.debug("Could not build fallback URI for {}", uri, e);
+            return Optional.empty();
+        }
+    }
+
+    private static boolean isHostnameMismatch(Throwable throwable) {
+        for (Throwable current = throwable; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message != null && message.contains("No subject alternative DNS name matching")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String detectCharset(HttpResponse<?> response) {
