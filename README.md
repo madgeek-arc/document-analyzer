@@ -18,7 +18,7 @@ uses an OpenAI model to populate a JSON template with structured data from that 
 ```
 
 <!-- x-release-please-start-version -->
-The executable JAR is produced at `target/document-analyzer-1.1.0-SNAPSHOT.jar`.
+The executable JAR is produced at `target/document-analyzer-1.0.1-SNAPSHOT`.
 <!-- x-release-please-end -->
 
 
@@ -42,7 +42,7 @@ Override as environment variables, system properties or by providing a custom .p
 
 <!-- x-release-please-start-version -->
 ```bash
-java -Dspring.ai.openai.api-key=<your-openai-key> -jar target/document-analyzer-1.1.0-SNAPSHOT.jar
+java -Dspring.ai.openai.api-key=<your-openai-key> -jar target/document-analyzer-1.0.1-SNAPSHOT
 ```
 <!-- x-release-please-end -->
 
@@ -151,7 +151,7 @@ The artifact is published to the madgik Maven repository. Add to your `pom.xml`:
 <dependency>
   <groupId>eu.openaire</groupId>
   <artifactId>document-analyzer</artifactId>
-  <version>1.1.0-SNAPSHOT</version>
+  <version>1.0.1-SNAPSHOT</version>
 </dependency>
 ```
 <!-- x-release-please-end -->
