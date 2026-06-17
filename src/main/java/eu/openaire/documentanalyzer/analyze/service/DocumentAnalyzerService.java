@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 public class DocumentAnalyzerService implements Closeable {
 
@@ -47,12 +48,16 @@ public class DocumentAnalyzerService implements Closeable {
     }
 
     public Content read(URI uri) {
+        return read(uri, List.of(), SupplementaryUrlFilterMethod.SIMPLE);
+    }
+
+    public Content read(URI uri, List<String> topics, SupplementaryUrlFilterMethod filterMethod) {
         try {
             UriReader.Data raw = contentReader.read(uri);
             if (uri.toString().contains(".pdf")) {
                 return pdfExtractor.extract(raw.data());
             } else {
-                return webPageExtractor.extractWholeSite(raw.uri());
+                return webPageExtractor.extractWholeSite(raw.uri(), topics, filterMethod);
             }
         } catch (DeferredContentException e) {
             try {
@@ -74,7 +79,11 @@ public class DocumentAnalyzerService implements Closeable {
     }
 
     public JsonNode generate(URI uri, JsonNode template) {
-        Content content = read(uri);
+        return generate(uri, template, List.of(), SupplementaryUrlFilterMethod.SIMPLE);
+    }
+
+    public JsonNode generate(URI uri, JsonNode template, List<String> topics, SupplementaryUrlFilterMethod filterMethod) {
+        Content content = read(uri, topics, filterMethod);
         return generate(content, template);
     }
 

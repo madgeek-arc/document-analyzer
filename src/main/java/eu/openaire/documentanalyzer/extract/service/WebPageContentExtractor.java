@@ -87,6 +87,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     private final Playwright playwright;
     private final Browser browser;
     private final Lock browserLock = new ReentrantLock();
+    private final Map<SupplementaryUrlFilterMethod, SupplementaryUrlFilter> supplementaryUrlFilters;
     private final long requestDelayMs;
 
     /**
@@ -117,6 +118,9 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)
                 .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox")));
+        this.supplementaryUrlFilters = Map.of(
+                SupplementaryUrlFilterMethod.SIMPLE, new SimpleSupplementaryUrlFilter()
+        );
     }
 
     /**
@@ -128,6 +132,24 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws IOException if the main page cannot be fetched or rendered
      */
     public HtmlContent extractWholeSite(URI uri) throws IOException {
+        return extractWholeSite(uri, List.of(), SupplementaryUrlFilterMethod.SIMPLE);
+    }
+
+    /**
+     * Performs whole-site scraping while optionally narrowing supplementary URLs by topic.
+     *
+     * <p>The provided topics are matched against candidate supplementary URLs using the selected
+     * filtering strategy before the usual path-relevance and result-limiting stages. This allows
+     * callers to ask for pages related to topics such as {@code history}, {@code description}, or
+     * {@code about} without hard-coding the matching logic into the extractor itself.
+     *
+     * @param uri the uri to extract content from
+     * @param topics topic hints used to retain relevant supplementary URLs
+     * @param filterMethod the URL filtering strategy to apply
+     * @return the extracted content
+     * @throws IOException if the main page cannot be fetched or rendered
+     */
+    public HtmlContent extractWholeSite(URI uri, List<String> topics, SupplementaryUrlFilterMethod filterMethod) throws IOException {
         String baseUrl = uri.getScheme() + "://" + uri.getHost();
         URI sitemapUrl = URI.create(String.join("/", baseUrl, "sitemap.xml"));
         Set<String> urls = new LinkedHashSet<>();
@@ -140,6 +162,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
             logger.info("Sitemap not found. Proceeding with provided url.");
         }
         urls.addAll(extractSameDomainUrls(content, uri));
+        urls = filterSupplementaryUrlsByTopics(uri, urls, topics, filterMethod);
 
         if (urls.size() > 2 * MAX_SUPPLEMENTARY_PAGES) { // when sitemap contains too many pages
             urls = filterUrlsByPathRelevance(uri, urls); // filter out "irrelevant" pages
@@ -482,6 +505,30 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         }
 
         return urls;
+    }
+
+    private Set<String> filterSupplementaryUrlsByTopics(
+            URI requestUri,
+            Set<String> urls,
+            List<String> topics,
+            SupplementaryUrlFilterMethod filterMethod
+    ) {
+        if (topics == null || topics.isEmpty()) {
+            return urls;
+        }
+        SupplementaryUrlFilterMethod resolvedMethod = filterMethod == null ? SupplementaryUrlFilterMethod.SIMPLE : filterMethod;
+        SupplementaryUrlFilter filter = supplementaryUrlFilters.get(resolvedMethod);
+        if (filter == null) {
+            throw new IllegalArgumentException("Unsupported supplementary URL filter method: " + resolvedMethod);
+        }
+        Set<String> filtered = filter.filter(requestUri, urls, topics);
+        LinkedHashSet<String> discarded = new LinkedHashSet<>(urls);
+        discarded.removeAll(filtered);
+        logger.info("Filtered supplementary URLs by topics {} using {}: {} -> {}",
+                topics, resolvedMethod, urls.size(), filtered.size());
+        logger.debug("Kept supplementary URLs for {}: {}", requestUri, filtered);
+        logger.debug("Discarded supplementary URLs for {}: {}", requestUri, discarded);
+        return filtered;
     }
 
     static Set<String> extractSameDomainUrls(HtmlContent content, URI requestUri) {

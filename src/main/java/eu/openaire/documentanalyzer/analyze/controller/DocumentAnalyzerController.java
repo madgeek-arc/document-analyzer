@@ -19,11 +19,13 @@ package eu.openaire.documentanalyzer.analyze.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.common.model.Content;
+import eu.openaire.documentanalyzer.extract.service.SupplementaryUrlFilterMethod;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.List;
 
 @RestController
 @RequestMapping("/v1/documents")
@@ -38,12 +40,25 @@ public class DocumentAnalyzerController {
     }
 
     @PostMapping(value = "/extract", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Content extractContent(@RequestParam URL url) throws URISyntaxException {
-        return documentAnalyzerService.read(url.toURI());
+    public Content extractContent(
+            @RequestParam URL url,
+            @RequestParam(required = false) List<String> topics
+//            @RequestParam(required = false, defaultValue = "SIMPLE") SupplementaryUrlFilterMethod filterMethod
+    ) throws URISyntaxException {
+        return documentAnalyzerService.read(url.toURI(), defaultTopics(topics), SupplementaryUrlFilterMethod.SIMPLE);
     }
 
     @PostMapping(value = "/enrich", produces = MediaType.APPLICATION_JSON_VALUE)
-    public JsonNode enrichDocument(@RequestParam URL url, @RequestBody JsonNode jsonTemplate) throws URISyntaxException {
-        return documentAnalyzerService.generate(url.toURI(), jsonTemplate);
+    public JsonNode enrichDocument(
+            @RequestParam URL url,
+            @RequestParam(required = false) List<String> topics,
+//            @RequestParam(required = false, defaultValue = "SIMPLE") SupplementaryUrlFilterMethod filterMethod,
+            @RequestBody JsonNode jsonTemplate
+    ) throws URISyntaxException {
+        return documentAnalyzerService.generate(url.toURI(), jsonTemplate, defaultTopics(topics), SupplementaryUrlFilterMethod.SIMPLE);
+    }
+
+    private List<String> defaultTopics(List<String> topics) {
+        return topics == null ? List.of() : topics;
     }
 }

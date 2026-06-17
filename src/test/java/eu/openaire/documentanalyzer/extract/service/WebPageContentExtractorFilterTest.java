@@ -264,4 +264,36 @@ class WebPageContentExtractorFilterTest {
                 "https://example.org/en/home#section"
         );
     }
+
+    @Test
+    void simpleSupplementaryUrlFilter_keepsUrlsMatchingTopics() {
+        SupplementaryUrlFilter filter = new SimpleSupplementaryUrlFilter();
+        URI request = URI.create("https://example.org/en/home");
+        Set<String> candidates = urls(
+                "https://example.org/about",
+                "https://example.org/history-of-the-university",
+                "https://example.org/contact"
+        );
+
+        Set<String> result = filter.filter(request, candidates, List.of("history", "about"));
+
+        assertThat(result).containsExactly(
+                "https://example.org/about",
+                "https://example.org/history-of-the-university"
+        );
+    }
+
+    @Test
+    void simpleSupplementaryUrlFilter_fallsBackToOriginalSetWhenNothingMatches() {
+        SupplementaryUrlFilter filter = new SimpleSupplementaryUrlFilter();
+        URI request = URI.create("https://example.org/en/home");
+        Set<String> candidates = urls(
+                "https://example.org/contact",
+                "https://example.org/news"
+        );
+
+        Set<String> result = filter.filter(request, candidates, List.of("history"));
+
+        assertThat(result).isEqualTo(candidates);
+    }
 }
