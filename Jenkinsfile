@@ -100,7 +100,7 @@ pipeline {
     stage('Handle Releases') {
       when {
         allOf {
-          branch 'master'
+          branch 'main'
           not { changeRequest() }
         }
       }
