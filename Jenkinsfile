@@ -38,14 +38,12 @@ pipeline {
         docker {
           image 'mcr.microsoft.com/playwright/java:v1.49.0-jammy'
           reuseNode true
-          args "-v ${env.HOST_M2}:/root/.m2"
+          args "-v ${env.HOST_M2}:/home/jenkins/.m2 -e MAVEN_OPTS='-Dmaven.repo.local=/home/jenkins/.m2/repository'"
         }
       }
       steps {
         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-            sh './mvnw -B verify -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11 -Dmaven.test.failure.ignore=true'
-          }
+          sh './mvnw -B verify -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true'
         }
       }
       post {
@@ -55,6 +53,21 @@ pipeline {
             tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
             sourceDirectories: [[path: 'src/main/java']]
           )
+        }
+      }
+    }
+
+    stage('Dependency Check') {
+      when { expression { return env.TAG_NAME == null } }
+      steps {
+        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+            sh './mvnw -B dependency-check:check -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11'
+          }
+        }
+      }
+      post {
+        always {
           archiveArtifacts allowEmptyArchive: true, artifacts: '**/dependency-check-report.*'
           dependencyCheckPublisher(
             pattern: '**/dependency-check-report.xml',
