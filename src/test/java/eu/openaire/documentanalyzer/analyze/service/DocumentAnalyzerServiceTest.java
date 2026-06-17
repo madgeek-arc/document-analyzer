@@ -155,4 +155,33 @@ class DocumentAnalyzerServiceTest {
         service.close();
         verify(webPageExtractor).close();
     }
+
+    @Test
+    void generate_uriAndTemplate_readsContentAndDelegates() throws IOException {
+        URI uri = URI.create("https://example.com/page");
+        JsonNode template = new ObjectMapper().readTree("{\"title\":\"\"}");
+        JsonNode expected = new ObjectMapper().readTree("{\"title\":\"Result\"}");
+        HtmlContent content = new HtmlContent();
+
+        when(contentReader.read(uri)).thenReturn(new UriReader.Data(uri, new byte[0]));
+        when(webPageExtractor.extractWholeSite(any(), any(), any())).thenReturn(content);
+        when(contentProcessor.generate(template, content)).thenReturn(expected);
+
+        JsonNode result = service.generate(uri, template);
+
+        assertThat(result).isSameAs(expected);
+    }
+
+    @Test
+    void read_genericException_wrapsWithSitemapMessage() throws IOException {
+        URI uri = URI.create("https://example.com/page");
+
+        when(contentReader.read(uri)).thenReturn(new UriReader.Data(uri, new byte[0]));
+        when(webPageExtractor.extractWholeSite(any(), any(), any()))
+                .thenThrow(new RuntimeException("unexpected error"));
+
+        assertThatThrownBy(() -> service.read(uri))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Could not parse sitemap.");
+    }
 }

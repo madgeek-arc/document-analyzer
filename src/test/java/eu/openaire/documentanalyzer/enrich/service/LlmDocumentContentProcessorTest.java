@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import eu.openaire.documentanalyzer.common.model.Content;
+import eu.openaire.documentanalyzer.enrich.service.EnrichMethod;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -259,5 +260,74 @@ class LlmDocumentContentProcessorTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(0).asText()).isEqualTo("chunk1_translated");
         assertThat(result.get(1).asText()).isEqualTo("chunk2_translated");
+    }
+
+    // ── DocumentContentProcessor.enrich() default method ─────────────────────
+
+    @Test
+    void enrich_delegatesToEnrichMethod() throws Exception {
+        Content content = new Content();
+        content.setText("some text");
+        JsonNode template = mapper.readTree("{\"title\":\"\"}");
+        EnrichMethod method = (t, c) -> {
+            try {
+                return mapper.readTree("{\"title\":\"filled\"}");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        JsonNode result = processor.enrich(template, content, method);
+
+        assertThat(result.get("title").asText()).isEqualTo("filled");
+    }
+
+    // ── translate() no-language overload ─────────────────────────────────────
+
+    @Test
+    void translate_noLanguage_delegatesToEnglish() {
+        when(chatClient.prompt().advisors(any(SimpleLoggerAdvisor.class)).user(anyString()).call()
+                .chatResponse().getResult().getOutput().getText())
+                .thenReturn("[\"hello\"]");
+
+        ArrayNode input = mapper.createArrayNode();
+        input.add("bonjour");
+
+        ArrayNode result = processor.translate(input);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).asText()).isEqualTo("hello");
+    }
+
+    // ── extractInformation() non-array response ───────────────────────────────
+
+    @Test
+    void extractInformation_nonArrayResponse_returnsNull() {
+        when(chatClient.prompt().advisors(any(SimpleLoggerAdvisor.class)).user(anyString()).call()
+                .chatResponse().getResult().getOutput().getText())
+                .thenReturn("{\"key\":\"value\"}");
+
+        Content content = new Content();
+        content.setText("some text");
+
+        ArrayNode result = processor.extractInformation(content);
+
+        assertThat(result).isNull();
+    }
+
+    // ── translate() non-array chunk response ──────────────────────────────────
+
+    @Test
+    void translate_nonArrayChunkResponse_returnsEmptyResult() {
+        when(chatClient.prompt().advisors(any(SimpleLoggerAdvisor.class)).user(anyString()).call()
+                .chatResponse().getResult().getOutput().getText())
+                .thenReturn("{}");
+
+        ArrayNode input = mapper.createArrayNode();
+        input.add("hello");
+
+        ArrayNode result = processor.translate(input, "Spanish");
+
+        assertThat(result).isEmpty();
     }
 }

@@ -107,4 +107,15 @@ class HtmlContentTest {
         HtmlContent content = new HtmlContent();
         assertThat(content.getExtraContent()).isNotNull().isEmpty();
     }
+
+    @Test
+    void setExtraContent_replacesExistingExtraContent() {
+        HtmlContent content = HtmlContent.of(MAIN_URL, MAIN_HTML_CONTENT, MAIN_TEXT_CONTENT);
+        java.util.Map<String, String> replacement = new java.util.LinkedHashMap<>();
+        replacement.put("https://other.com", "<p>other</p>");
+
+        content.setExtraContent(replacement);
+
+        assertThat(content.getExtraContent()).isSameAs(replacement);
+    }
 }
