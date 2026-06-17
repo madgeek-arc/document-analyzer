@@ -279,7 +279,7 @@ public class HttpUriReader implements UriReader {
      *
      * <p>The matching strategy is intentionally conservative. It prefers:
      * {@code www} / non-{@code www} variants first, then a parent-domain fallback such as
-     * {@code en.uoc.gr -> uoc.gr}, and finally a bounded fuzzy match on subdomain labels.
+     * {@code en.example.org -> example.org}, and finally a bounded fuzzy match on subdomain labels.
      * Fuzzy matching is only allowed for longer labels so short labels such as {@code en} are not
      * rewritten to unrelated sibling subdomains.
      *
@@ -327,7 +327,7 @@ public class HttpUriReader implements UriReader {
     /**
      * Returns a retry URI for subdomains by removing exactly one leftmost label.
      *
-     * <p>This is used as a conservative fallback for requests like {@code en.uoc.gr} when the
+     * <p>This is used as a conservative fallback for requests like {@code en.example.org} when the
      * subdomain hostname itself fails TLS verification but the parent domain may still be the
      * intended site. The method only applies to hosts with more than two labels and removes a
      * single leading label per retry step.

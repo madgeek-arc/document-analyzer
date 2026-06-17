@@ -39,21 +39,21 @@ class HttpUriReaderTest {
 
     @Test
     void certificateHostnameFallback_rewritesWwwHostOnSanMismatch() {
-        URI request = URI.create("https://www.academyofathens.gr/some/path?x=1#section");
+        URI request = URI.create("https://www.example.com/some/path?x=1#section");
         SSLHandshakeException exception = new SSLHandshakeException(
-                "No subject alternative DNS name matching www.academyofathens.gr found."
+                "No subject alternative DNS name matching www.example.com found."
         );
 
         Optional<URI> fallback = HttpUriReader.certificateHostnameFallback(request, exception);
 
-        assertThat(fallback).hasValue(URI.create("https://academyofathens.gr/some/path?x=1#section"));
+        assertThat(fallback).hasValue(URI.create("https://example.com/some/path?x=1#section"));
     }
 
     @Test
     void certificateHostnameFallback_returnsEmptyForNonWwwHost() {
-        URI request = URI.create("https://academyofathens.gr/some/path");
+        URI request = URI.create("https://example.com/some/path");
         SSLHandshakeException exception = new SSLHandshakeException(
-                "No subject alternative DNS name matching academyofathens.gr found."
+                "No subject alternative DNS name matching example.com found."
         );
 
         Optional<URI> fallback = HttpUriReader.certificateHostnameFallback(request, exception);
@@ -63,7 +63,7 @@ class HttpUriReaderTest {
 
     @Test
     void certificateHostnameFallback_returnsEmptyForOtherSslErrors() {
-        URI request = URI.create("https://www.academyofathens.gr/some/path");
+        URI request = URI.create("https://www.example.com/some/path");
         SSLHandshakeException exception = new SSLHandshakeException("PKIX path building failed");
 
         Optional<URI> fallback = HttpUriReader.certificateHostnameFallback(request, exception);
@@ -73,27 +73,27 @@ class HttpUriReaderTest {
 
     @Test
     void parentDomainUri_rewritesSubdomainToParentDomain() {
-        URI request = URI.create("https://en.uoc.gr/some/path?x=1#section");
+        URI request = URI.create("https://en.example.org/some/path?x=1#section");
 
         Optional<URI> fallback = HttpUriReader.parentDomainUri(request);
 
-        assertThat(fallback).hasValue(URI.create("https://uoc.gr/some/path?x=1#section"));
+        assertThat(fallback).hasValue(URI.create("https://example.org/some/path?x=1#section"));
     }
 
     @Test
     void unresolvedHostFallback_rewritesWwwHostOnUnresolvedAddress() {
-        URI request = URI.create("https://www.nlg.gr/some/path?x=1#section");
+        URI request = URI.create("https://www.example.net/some/path?x=1#section");
         ConnectException exception = new ConnectException("connect failed");
         exception.initCause(new java.nio.channels.UnresolvedAddressException());
 
         Optional<URI> fallback = HttpUriReader.unresolvedHostFallback(request, exception);
 
-        assertThat(fallback).hasValue(URI.create("https://nlg.gr/some/path?x=1#section"));
+        assertThat(fallback).hasValue(URI.create("https://example.net/some/path?x=1#section"));
     }
 
     @Test
     void unresolvedHostFallback_returnsEmptyForNonWwwHost() {
-        URI request = URI.create("https://nlg.gr/some/path");
+        URI request = URI.create("https://example.net/some/path");
         ConnectException exception = new ConnectException("connect failed");
         exception.initCause(new java.nio.channels.UnresolvedAddressException());
 
@@ -104,7 +104,7 @@ class HttpUriReaderTest {
 
     @Test
     void unresolvedHostFallback_returnsEmptyForOtherConnectErrors() {
-        URI request = URI.create("https://www.nlg.gr/some/path");
+        URI request = URI.create("https://www.example.net/some/path");
         ConnectException exception = new ConnectException("connection refused");
 
         Optional<URI> fallback = HttpUriReader.unresolvedHostFallback(request, exception);
@@ -114,20 +114,20 @@ class HttpUriReaderTest {
 
     @Test
     void certificateDnsFallback_usesSingleRelatedSanHost() {
-        URI request = URI.create("https://en.uoc.gr/some/path");
+        URI request = URI.create("https://en.example.org/some/path");
 
-        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("uoc.gr", "gallery.uoc.gr"));
+        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("example.org", "gallery.example.org"));
 
-        assertThat(fallback).hasValue(URI.create("https://uoc.gr/some/path"));
+        assertThat(fallback).hasValue(URI.create("https://example.org/some/path"));
     }
 
     @Test
     void certificateDnsFallback_returnsEmptyWhenSansAreAmbiguous() {
-        URI request = URI.create("https://en.uoc.gr/some/path");
+        URI request = URI.create("https://en.example.org/some/path");
 
         Optional<URI> fallback = HttpUriReader.certificateDnsFallback(
                 request,
-                List.of("www.uoc.gr", "www.cs.uoc.gr")
+                List.of("www.example.org", "www.cs.example.org")
         );
 
         assertThat(fallback).isEmpty();
@@ -135,27 +135,27 @@ class HttpUriReaderTest {
 
     @Test
     void certificateDnsFallback_ignoresUnrelatedSiblingSubdomains() {
-        URI request = URI.create("https://en.uoc.gr/some/path");
+        URI request = URI.create("https://en.example.org/some/path");
 
-        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("gallery.uoc.gr"));
+        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("gallery.example.org"));
 
         assertThat(fallback).isEmpty();
     }
 
     @Test
     void certificateDnsFallback_allowsCloseFuzzySubdomainMatchesForLongLabels() {
-        URI request = URI.create("https://english.uoc.gr/some/path");
+        URI request = URI.create("https://english.example.org/some/path");
 
-        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("engllish.uoc.gr"));
+        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("engllish.example.org"));
 
-        assertThat(fallback).hasValue(URI.create("https://engllish.uoc.gr/some/path"));
+        assertThat(fallback).hasValue(URI.create("https://engllish.example.org/some/path"));
     }
 
     @Test
     void certificateDnsFallback_disallowsFuzzyMatchesForShortLabels() {
-        URI request = URI.create("https://en.uoc.gr/some/path");
+        URI request = URI.create("https://en.example.org/some/path");
 
-        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("eg.uoc.gr"));
+        Optional<URI> fallback = HttpUriReader.certificateDnsFallback(request, List.of("eg.example.org"));
 
         assertThat(fallback).isEmpty();
     }
@@ -163,14 +163,14 @@ class HttpUriReaderTest {
     @Test
     void extractDnsNames_readsDnsSubjectAlternativeNames() {
         X509Certificate certificate = new StubX509Certificate(List.of(
-                List.of(2, "www.uoc.gr"),
+                List.of(2, "www.example.org"),
                 List.of(7, "127.0.0.1"),
-                List.of(2, "uoc.gr")
+                List.of(2, "example.org")
         ));
 
         List<String> dnsNames = HttpUriReader.extractDnsNames(new java.security.cert.Certificate[]{certificate});
 
-        assertThat(dnsNames).containsExactly("www.uoc.gr", "uoc.gr");
+        assertThat(dnsNames).containsExactly("www.example.org", "example.org");
     }
 
     private static final class StubX509Certificate extends X509Certificate {
