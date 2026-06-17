@@ -1,6 +1,6 @@
 logging:
   level:
-    eu.openaire: debug
+    eu.openaire: info
 
 server:
   port: 8666
