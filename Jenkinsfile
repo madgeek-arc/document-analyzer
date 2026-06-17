@@ -39,7 +39,7 @@ pipeline {
         stage('Test') {
           agent {
             docker {
-              image 'mcr.microsoft.com/playwright/java:v1.49.0-jammy'
+              image 'mcr.microsoft.com/playwright/java:v1.52.0-jammy'
               reuseNode true
               args "-v ${env.HOST_M2}:/home/jenkins/.m2 -e MAVEN_USER_HOME=/home/jenkins/.m2 -e MAVEN_OPTS='-Dmaven.repo.local=/home/jenkins/.m2/repository'"
             }
