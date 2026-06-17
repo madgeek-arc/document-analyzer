@@ -18,6 +18,7 @@ package eu.openaire.documentanalyzer.extract.service;
 
 import eu.openaire.documentanalyzer.common.model.PdfContent;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
@@ -60,6 +61,17 @@ class PdfContentExtractorTest {
         return baos.toByteArray();
     }
 
+    private byte[] createPdfWithCustomMetadata(String key, String value) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PDDocument document = new PDDocument()) {
+            document.addPage(new PDPage());
+            PDDocumentInformation info = document.getDocumentInformation();
+            info.setCustomMetadataValue(key, value);
+            document.save(baos);
+        }
+        return baos.toByteArray();
+    }
+
     @Test
     void extract_withValidPdf_returnsNonNullContent() throws IOException {
         byte[] pdfBytes = createPdfWithText("Hello PDF World");
@@ -95,5 +107,12 @@ class PdfContentExtractorTest {
         PdfContent content = extractor.extract(pdfBytes);
         // metadata may be empty string but should not be null
         assertThat(content.getMetadata()).isNotNull();
+    }
+
+    @Test
+    void extract_withCustomMetadata_includesKeyValueInMetadataString() throws IOException {
+        byte[] pdfBytes = createPdfWithCustomMetadata("Department", "Engineering");
+        PdfContent content = extractor.extract(pdfBytes);
+        assertThat(content.getMetadata()).contains("Department: Engineering");
     }
 }
