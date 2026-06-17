@@ -92,7 +92,7 @@ pipeline {
       }
       steps {
         configFileProvider([configFile(fileId: 'madgik-settings', variable: 'MAVEN_SETTINGS')]) {
-          sh './mvnw deploy -s "$MAVEN_SETTINGS" -B -DskipTests'
+          sh './mvnw deploy -s "$MAVEN_SETTINGS" -B -DskipTests -Ddependency-check.skip=true'
         }
       }
     }
