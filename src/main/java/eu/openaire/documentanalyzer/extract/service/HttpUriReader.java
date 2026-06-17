@@ -64,7 +64,21 @@ public class HttpUriReader implements UriReader {
 
     public HttpUriReader(long requestDelayMs) throws KeyManagementException, NoSuchAlgorithmException {
         this.requestDelayMs = requestDelayMs;
-        // Trust all certificates
+        this.sslContext = createPermissiveSslContext();
+        this.client = HttpClient
+                .newBuilder()
+                .followRedirects(HttpClient.Redirect.ALWAYS)
+                .sslContext(sslContext)
+                .build();
+    }
+
+    HttpUriReader(HttpClient client, long requestDelayMs) throws KeyManagementException, NoSuchAlgorithmException {
+        this.client = client;
+        this.requestDelayMs = requestDelayMs;
+        this.sslContext = createPermissiveSslContext();
+    }
+
+    private static SSLContext createPermissiveSslContext() throws NoSuchAlgorithmException, KeyManagementException {
         TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
                     public X509Certificate[] getAcceptedIssuers() {
@@ -78,15 +92,9 @@ public class HttpUriReader implements UriReader {
                     }
                 }
         };
-        // Create an SSLContext that uses the trust manager
-        this.sslContext = SSLContext.getInstance("TLS");
-        this.sslContext.init(null, trustAllCerts, new SecureRandom());
-
-        this.client = HttpClient
-                .newBuilder()
-                .followRedirects(HttpClient.Redirect.ALWAYS)
-                .sslContext(sslContext)
-                .build();
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(null, trustAllCerts, new SecureRandom());
+        return ctx;
     }
 
     @Override
