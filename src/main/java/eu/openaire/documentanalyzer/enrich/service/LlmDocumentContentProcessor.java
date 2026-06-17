@@ -35,21 +35,24 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(LlmDocumentContentProcessor.class);
 
-    private final ChatModel chatModel;
+    private final ChatClient chatClient;
     private final ContentMetadataRequestBuilder contentBuilder;
     private final ObjectMapper mapper;
 
-    public LlmDocumentContentProcessor(ChatModel chatModel, ObjectMapper mapper) {
-        this.chatModel = chatModel;
+    LlmDocumentContentProcessor(ChatClient chatClient, ObjectMapper mapper) {
+        this.chatClient = chatClient;
         this.mapper = mapper;
         this.contentBuilder = new ContentMetadataRequestBuilder();
+    }
+
+    public LlmDocumentContentProcessor(ChatModel chatModel, ObjectMapper mapper) {
+        this(ChatClient.create(chatModel), mapper);
     }
 
     @Override
     public <T extends Content> ArrayNode extractInformation(T content) {
         JsonNode response;
-        ChatClient.ChatClientRequestSpec client = ChatClient
-                .create(chatModel)
+        ChatClient.ChatClientRequestSpec client = chatClient
                 .prompt()
                 .advisors(new SimpleLoggerAdvisor());
         try {
@@ -65,8 +68,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     @Override
     public JsonNode generate(JsonNode template, Content content) {
         JsonNode response = null;
-        ChatClient.ChatClientRequestSpec client = ChatClient
-                .create(chatModel)
+        ChatClient.ChatClientRequestSpec client = chatClient
                 .prompt()
                 .advisors(new SimpleLoggerAdvisor());
         try {
@@ -87,7 +89,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
         String requestTemplate = """
                 Translate the following JSON list to %s and return it in the same format.
                 You will only translate the content, you will not add any explanation or comment.
-                
+
                 %s
                 """.formatted(language, "%s");
         List<ArrayNode> chunks = splitArrayNode(content, 400, mapper);
@@ -95,7 +97,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
         ArrayNode translated = mapper.createArrayNode();
 
         ChatResponse response;
-        ChatClient.ChatClientRequestSpec client = ChatClient.create(chatModel).prompt()
+        ChatClient.ChatClientRequestSpec client = chatClient.prompt()
                 .advisors(new SimpleLoggerAdvisor());
 
         try {
