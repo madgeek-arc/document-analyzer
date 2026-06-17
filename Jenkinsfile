@@ -32,49 +32,54 @@ pipeline {
       }
     }
 
-    stage('Test') {
+    stage('Verify') {
       when { expression { return env.TAG_NAME == null } }
-      agent {
-        docker {
-          image 'mcr.microsoft.com/playwright/java:v1.49.0-jammy'
-          reuseNode true
-          args "-v ${env.HOST_M2}:/home/jenkins/.m2 -e MAVEN_OPTS='-Dmaven.repo.local=/home/jenkins/.m2/repository'"
-        }
-      }
-      steps {
-        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          sh './mvnw -B verify -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true'
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: '**/target/surefire-reports/TEST-*.xml'
-          recordCoverage(
-            tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
-            sourceDirectories: [[path: 'src/main/java']]
-          )
-        }
-      }
-    }
+      parallel {
 
-    stage('Dependency Check') {
-      when { expression { return env.TAG_NAME == null } }
-      steps {
-        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-            sh './mvnw -B dependency-check:check -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11'
+        stage('Test') {
+          agent {
+            docker {
+              image 'mcr.microsoft.com/playwright/java:v1.49.0-jammy'
+              reuseNode true
+              args "-v ${env.HOST_M2}:/home/jenkins/.m2 -e MAVEN_USER_HOME=/home/jenkins/.m2 -e MAVEN_OPTS='-Dmaven.repo.local=/home/jenkins/.m2/repository'"
+            }
+          }
+          steps {
+            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+              sh './mvnw -B verify -Ddependency-check.skip=true -Dmaven.test.failure.ignore=true'
+            }
+          }
+          post {
+            always {
+              junit allowEmptyResults: true, testResults: '**/target/surefire-reports/TEST-*.xml'
+              recordCoverage(
+                tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                sourceDirectories: [[path: 'src/main/java']]
+              )
+            }
           }
         }
-      }
-      post {
-        always {
-          archiveArtifacts allowEmptyArchive: true, artifacts: '**/dependency-check-report.*'
-          dependencyCheckPublisher(
-            pattern: '**/dependency-check-report.xml',
-            unstableTotalCritical: 1,
-            unstableTotalHigh: 3
-          )
+
+        stage('Dependency Check') {
+          steps {
+            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+              withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                sh './mvnw -B dependency-check:check -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11'
+              }
+            }
+          }
+          post {
+            always {
+              archiveArtifacts allowEmptyArchive: true, artifacts: '**/dependency-check-report.*'
+              dependencyCheckPublisher(
+                pattern: '**/dependency-check-report.xml',
+                unstableTotalCritical: 1,
+                unstableTotalHigh: 3
+              )
+            }
+          }
         }
+
       }
     }
 
