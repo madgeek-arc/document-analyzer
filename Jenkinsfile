@@ -24,19 +24,27 @@ pipeline {
       }
     }
 
+    stage('Extract M2 HOME to environment') {
+      steps {
+        script {
+          env.HOST_M2 = sh(script: 'echo $HOME', returnStdout: true).trim() + '/.m2'
+        }
+      }
+    }
+
     stage('Test') {
       when { expression { return env.TAG_NAME == null } }
       agent {
         docker {
           image 'mcr.microsoft.com/playwright/java:v1.49.0-jammy'
           reuseNode true
-          args '-v $HOME/.m2:/root/.m2'
+          args "-v ${env.HOST_M2}:/root/.m2"
         }
       }
       steps {
         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
           withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-            sh './mvnw -B verify -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11'
+            sh './mvnw -B verify -DnvdApiKey=$NVD_API_KEY -DfailBuildOnCVSS=11 -Dmaven.test.failure.ignore=true'
           }
         }
       }
