@@ -112,8 +112,10 @@ pipeline {
                 withCredentials([string(credentialsId: 'jenkins-github-pat', variable: 'GH_TOKEN')]) {
                   sh '''
                     [ -f /etc/profile.d/load_nvm.sh ] || { echo "ERROR: /etc/profile.d/load_nvm.sh not found. NVM is required on this agent."; exit 1; }
-                    . /etc/profile.d/load_nvm.sh > /dev/null 2>&1
+                    { set +x; } 2>/dev/null
+                    . /etc/profile.d/load_nvm.sh
                     nvm install --lts
+                    set -x
                     npx release-please@17 github-release --repo-url ${GIT_URL} --token ${GH_TOKEN}
 
                     npx release-please@17 release-pr --repo-url ${GIT_URL} --token ${GH_TOKEN}
