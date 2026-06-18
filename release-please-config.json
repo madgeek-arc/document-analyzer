@@ -1,7 +1,6 @@
 {
   "include-v-in-tag": false,
   "include-component-in-tag": false,
-  "bootstrap-sha": "d38703e5f09b2287695dd7461238c2585a156ecd",
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
