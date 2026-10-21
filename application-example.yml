@@ -1,0 +1,34 @@
+# Example configuration for running document-analyzer standalone (or for the embedding host).
+# Copy to application.yml outside the repository, fill the placeholders and start with
+#   java -jar target/document-analyzer-<version>-exec.jar --spring.config.additional-location=file:./application.yml
+# Never commit real keys.
+
+server:
+  port: 8666
+  servlet:
+    context-path: /api
+
+spring:
+  ai:
+    openai:
+      api-key: <openai-api-key>          # or env SPRING_AI_OPENAI_API_KEY
+      chat:
+        options:
+          model: gpt-5-mini
+          temperature: 1.0
+
+scraping:
+  request-delay-ms: 500
+
+document-analyzer:
+  allow-private-addresses: false       # true only if internal sites must be analysed
+  http:
+    connect-timeout: 10s
+    request-timeout: 60s
+    trust-all-certificates: false      # true accepts broken/self-signed certificate chains
+
+# system-prompt: "..."                 # sent as the system message of every LLM request
+
+logging:
+  level:
+    eu.openaire: info
