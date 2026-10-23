@@ -29,6 +29,11 @@ public interface DocumentContentProcessor {
 
     <T extends Content> ArrayNode extractInformation(T content);
 
+    /**
+     * Fills the template with metadata generated from the content.
+     *
+     * @return the filled template, or {@code null} if no valid JSON could be obtained (the failure is logged)
+     */
     <T extends Content> JsonNode generate(JsonNode template, T content);
 
     ArrayNode translate(ArrayNode content, String language);

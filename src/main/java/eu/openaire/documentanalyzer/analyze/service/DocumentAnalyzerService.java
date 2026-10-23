@@ -20,6 +20,7 @@ package eu.openaire.documentanalyzer.analyze.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.common.model.Content;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
+import eu.openaire.documentanalyzer.enrich.service.EnrichmentException;
 import eu.openaire.documentanalyzer.extract.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,7 +89,10 @@ public class DocumentAnalyzerService implements Closeable {
 
     public JsonNode generate(Content content, JsonNode template) {
         JsonNode augContent = contentProcessor.generate(template, content);
-        logger.info(augContent.toPrettyString());
+        if (augContent == null) {
+            throw new EnrichmentException("The LLM did not return valid metadata for the document");
+        }
+        logger.debug("Generated metadata: {}", augContent);
         return augContent;
     }
 
