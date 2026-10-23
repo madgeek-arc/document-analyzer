@@ -22,6 +22,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
 import eu.openaire.documentanalyzer.enrich.service.LlmDocumentContentProcessor;
+import eu.openaire.documentanalyzer.extract.service.HttpReaderSettings;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.ModelOptionsUtils;
@@ -30,6 +31,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.retry.annotation.EnableRetry;
 
@@ -38,6 +40,7 @@ import java.security.NoSuchAlgorithmException;
 
 @EnableRetry
 @AutoConfiguration
+@EnableConfigurationProperties(DocumentAnalyzerProperties.class)
 public class DocumentAnalyzerAutoConfiguration {
 
 //    @Bean
@@ -71,7 +74,13 @@ public class DocumentAnalyzerAutoConfiguration {
     @Bean
     DocumentAnalyzerService documentAnalyzerService(
             DocumentContentProcessor documentContentProcessor,
+            DocumentAnalyzerProperties properties,
             @Value("${scraping.request-delay-ms:500}") long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        return new DocumentAnalyzerService(documentContentProcessor, requestDelayMs);
+        HttpReaderSettings settings = new HttpReaderSettings(
+                requestDelayMs,
+                properties.getHttp().getConnectTimeout(),
+                properties.getHttp().getRequestTimeout(),
+                properties.getHttp().isTrustAllCertificates());
+        return new DocumentAnalyzerService(documentContentProcessor, settings);
     }
 }

@@ -110,10 +110,21 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws KeyManagementException   if the SSL context configuration fails
      */
     public WebPageContentExtractor(long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        this.requestDelayMs = requestDelayMs;
-        this.contentReader = new HttpUriReader(requestDelayMs);
+        this(HttpReaderSettings.defaults().withRequestDelayMs(requestDelayMs));
+    }
+
+    /**
+     * Initializes the extractor with the given HTTP settings, used for sitemap, robots.txt and page fetches.
+     *
+     * @param settings HTTP timeouts, certificate handling and inter-request delay
+     * @throws NoSuchAlgorithmException if the SSL context cannot be initialized
+     * @throws KeyManagementException   if the SSL context configuration fails
+     */
+    public WebPageContentExtractor(HttpReaderSettings settings) throws NoSuchAlgorithmException, KeyManagementException {
+        this.requestDelayMs = settings.requestDelayMs();
+        this.contentReader = new HttpUriReader(settings);
         // Robots.txt is fetched once per origin and cached
-        this.robotsCache = new RobotsCache(new HttpUriReader(0));
+        this.robotsCache = new RobotsCache(new HttpUriReader(settings.withRequestDelayMs(0)));
         this.playwright = Playwright.create();
         this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)

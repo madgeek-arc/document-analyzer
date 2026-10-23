@@ -51,9 +51,13 @@ public class DocumentAnalyzerService implements Closeable {
     }
 
     public DocumentAnalyzerService(DocumentContentProcessor contentProcessor, long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        this(new WebPageContentExtractor(requestDelayMs),
+        this(contentProcessor, HttpReaderSettings.defaults().withRequestDelayMs(requestDelayMs));
+    }
+
+    public DocumentAnalyzerService(DocumentContentProcessor contentProcessor, HttpReaderSettings settings) throws NoSuchAlgorithmException, KeyManagementException {
+        this(new WebPageContentExtractor(settings),
              new PdfContentExtractor(),
-             new HttpUriReader(requestDelayMs),
+             new HttpUriReader(settings),
              contentProcessor);
     }
 
