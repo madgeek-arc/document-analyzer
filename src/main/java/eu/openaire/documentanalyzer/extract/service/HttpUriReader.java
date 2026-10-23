@@ -182,6 +182,9 @@ public class HttpUriReader implements UriReader {
                 bytes = is.readAllBytes();
             }
 
+            if (PdfContentExtractor.isPdf(bytes)) {
+                return new Data(uri, bytes);
+            }
             Document doc = Jsoup.parse(new String(bytes, detectCharset(response)));
 
             String englishUrl = detectEnglishHtmlVersion(doc);

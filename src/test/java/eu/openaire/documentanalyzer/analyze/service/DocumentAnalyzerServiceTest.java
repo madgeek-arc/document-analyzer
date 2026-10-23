@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,9 +55,9 @@ class DocumentAnalyzerServiceTest {
     }
 
     @Test
-    void read_pdfUri_routesToPdfExtractor() throws IOException {
-        URI uri = URI.create("https://example.com/paper.pdf");
-        byte[] bytes = {1, 2, 3};
+    void read_pdfContent_routesToPdfExtractor() throws IOException {
+        URI uri = URI.create("https://example.com/download?id=42");
+        byte[] bytes = "%PDF-1.7\n...".getBytes(StandardCharsets.US_ASCII);
         UriReader.Data data = new UriReader.Data(uri, bytes);
         PdfContent expected = new PdfContent();
 
@@ -67,6 +68,19 @@ class DocumentAnalyzerServiceTest {
 
         assertThat(result).isSameAs(expected);
         verifyNoInteractions(webPageExtractor);
+    }
+
+    @Test
+    void read_htmlContentWithPdfLikeUrl_routesToWebPageExtractor() throws IOException {
+        URI uri = URI.create("https://example.com/files.pdf.html");
+        UriReader.Data data = new UriReader.Data(uri, "<html></html>".getBytes(StandardCharsets.UTF_8));
+        HtmlContent expected = new HtmlContent();
+
+        when(contentReader.read(uri)).thenReturn(data);
+        when(webPageExtractor.extractWholeSite(any(), any(), any())).thenReturn(expected);
+
+        assertThat(service.read(uri)).isSameAs(expected);
+        verifyNoInteractions(pdfExtractor);
     }
 
     @Test

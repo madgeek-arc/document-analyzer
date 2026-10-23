@@ -68,7 +68,7 @@ public class DocumentAnalyzerService implements Closeable {
     public Content read(URI uri, List<String> topics, SupplementaryUrlFilterMethod filterMethod) {
         try {
             UriReader.Data raw = contentReader.read(uri);
-            if (uri.toString().contains(".pdf")) {
+            if (PdfContentExtractor.isPdf(raw.data())) {
                 return pdfExtractor.extract(raw.data());
             } else {
                 return webPageExtractor.extractWholeSite(raw.uri(), topics, filterMethod);
