@@ -131,6 +131,16 @@
 	</distributionManagement>
 	<build>
 		<plugins>
+			<plugin>
+				<!-- Executable jar for standalone use, kept out of the deployed artefacts -->
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<classifier>exec</classifier>
+					<attach>false</attach>
+					<mainClass>eu.openaire.documentanalyzer.DocumentAnalyzerApplication</mainClass>
+				</configuration>
+			</plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
