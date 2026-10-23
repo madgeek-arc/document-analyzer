@@ -22,6 +22,7 @@ import eu.openaire.documentanalyzer.common.model.Content;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
 import eu.openaire.documentanalyzer.common.model.PdfContent;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
+import eu.openaire.documentanalyzer.enrich.service.EnrichmentException;
 import eu.openaire.documentanalyzer.extract.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -197,5 +198,15 @@ class DocumentAnalyzerServiceTest {
         assertThatThrownBy(() -> service.read(uri))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Could not parse sitemap.");
+    }
+
+    @Test
+    void generate_processorReturnsNull_throwsEnrichmentException() throws Exception {
+        Content content = new HtmlContent();
+        JsonNode template = new ObjectMapper().readTree("{\"title\":\"\"}");
+        when(contentProcessor.generate(template, content)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.generate(content, template))
+                .isInstanceOf(EnrichmentException.class);
     }
 }
