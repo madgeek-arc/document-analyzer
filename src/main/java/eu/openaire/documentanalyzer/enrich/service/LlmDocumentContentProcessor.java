@@ -39,7 +39,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     private final ContentMetadataRequestBuilder contentBuilder;
     private final ObjectMapper mapper;
 
-    LlmDocumentContentProcessor(ChatClient chatClient, ObjectMapper mapper) {
+    public LlmDocumentContentProcessor(ChatClient chatClient, ObjectMapper mapper) {
         this.chatClient = chatClient;
         this.mapper = mapper;
         this.contentBuilder = new ContentMetadataRequestBuilder();
