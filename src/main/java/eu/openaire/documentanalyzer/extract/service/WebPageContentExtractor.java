@@ -84,6 +84,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private final HttpUriReader contentReader;
     private final RobotsCache robotsCache;
+    private final UrlGuard urlGuard;
     private final Playwright playwright;
     private final Browser browser;
     private final Lock browserLock = new ReentrantLock();
@@ -122,6 +123,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      */
     public WebPageContentExtractor(HttpReaderSettings settings) throws NoSuchAlgorithmException, KeyManagementException {
         this.requestDelayMs = settings.requestDelayMs();
+        this.urlGuard = new UrlGuard(settings.allowPrivateAddresses());
         this.contentReader = new HttpUriReader(settings);
         // Robots.txt is fetched once per origin and cached
         this.robotsCache = new RobotsCache(new HttpUriReader(settings.withRequestDelayMs(0)));
@@ -251,6 +253,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     @Retryable(retryFor = IOException.class, noRetryFor = {RobotsDisallowedException.class},
             maxAttempts = 4, backoff = @Backoff(delay = 2000, multiplier = 2))
     public HtmlContent extractFromUrl(String url) throws IOException {
+        urlGuard.check(URI.create(url));
         browserLock.lock();
         try {
             try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
@@ -259,9 +262,13 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
                             "Accept-Language", "en-US,en;q=0.9",
                             "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
                     ))); Page page = context.newPage()) {
+                guardRequests(context);
                 com.microsoft.playwright.Response response = page.navigate(url, new Page.NavigateOptions()
                         .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
                         .setTimeout(60000));
+                if (!urlGuard.isAllowedRequest(page.url())) {
+                    throw new BlockedUrlException("Navigation ended on a blocked URL: " + page.url());
+                }
                 if (response != null) {
                     int status = response.status();
                     if (status == 429 || status == 503) {
@@ -317,6 +324,7 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         browserLock.lock();
         try {
             try (BrowserContext context = browser.newContext()) {
+                guardRequests(context);
                 Page page = context.newPage();
                 page.setContent(htmlData);
                 String renderedHtml = page.content();
@@ -328,6 +336,22 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         } finally {
             browserLock.unlock();
         }
+    }
+
+    /**
+     * Aborts every browser request (page, redirect target, sub-resource, script fetch) that the
+     * {@link UrlGuard} rejects.
+     */
+    private void guardRequests(BrowserContext context) {
+        context.route("**/*", route -> {
+            String requestUrl = route.request().url();
+            if (urlGuard.isAllowedRequest(requestUrl)) {
+                route.resume();
+            } else {
+                logger.warn("Blocked browser request to {}", requestUrl);
+                route.abort("blockedbyclient");
+            }
+        });
     }
 
     private void waitForMeaningfulContent(Page page, String url) {

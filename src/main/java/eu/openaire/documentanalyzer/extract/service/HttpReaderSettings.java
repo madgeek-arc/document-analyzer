@@ -25,20 +25,23 @@ import java.time.Duration;
  * @param connectTimeout       TCP/TLS connect timeout
  * @param requestTimeout       timeout for receiving the response headers of a single request
  * @param trustAllCertificates accept any server certificate chain (hostname verification still applies)
+ * @param allowPrivateAddresses allow URLs that resolve to loopback, private or other non-public addresses
  */
 public record HttpReaderSettings(long requestDelayMs,
                                  Duration connectTimeout,
                                  Duration requestTimeout,
-                                 boolean trustAllCertificates) {
+                                 boolean trustAllCertificates,
+                                 boolean allowPrivateAddresses) {
 
     public static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
     public static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
     public static HttpReaderSettings defaults() {
-        return new HttpReaderSettings(0, DEFAULT_CONNECT_TIMEOUT, DEFAULT_REQUEST_TIMEOUT, false);
+        return new HttpReaderSettings(0, DEFAULT_CONNECT_TIMEOUT, DEFAULT_REQUEST_TIMEOUT, false, false);
     }
 
     public HttpReaderSettings withRequestDelayMs(long requestDelayMs) {
-        return new HttpReaderSettings(requestDelayMs, connectTimeout, requestTimeout, trustAllCertificates);
+        return new HttpReaderSettings(requestDelayMs, connectTimeout, requestTimeout, trustAllCertificates,
+                allowPrivateAddresses);
     }
 }

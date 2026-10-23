@@ -24,9 +24,18 @@ import java.time.Duration;
 public class DocumentAnalyzerProperties {
 
     private final Http http = new Http();
+    private boolean allowPrivateAddresses = false;
 
     public Http getHttp() {
         return http;
+    }
+
+    public boolean isAllowPrivateAddresses() {
+        return allowPrivateAddresses;
+    }
+
+    public void setAllowPrivateAddresses(boolean allowPrivateAddresses) {
+        this.allowPrivateAddresses = allowPrivateAddresses;
     }
 
     public static class Http {

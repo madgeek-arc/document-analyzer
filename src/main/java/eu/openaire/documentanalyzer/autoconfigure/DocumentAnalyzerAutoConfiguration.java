@@ -80,7 +80,8 @@ public class DocumentAnalyzerAutoConfiguration {
                 requestDelayMs,
                 properties.getHttp().getConnectTimeout(),
                 properties.getHttp().getRequestTimeout(),
-                properties.getHttp().isTrustAllCertificates());
+                properties.getHttp().isTrustAllCertificates(),
+                properties.isAllowPrivateAddresses());
         return new DocumentAnalyzerService(documentContentProcessor, settings);
     }
 }
