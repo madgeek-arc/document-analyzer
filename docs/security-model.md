@@ -1,4 +1,4 @@
-# Document Analyzer — Security
+# Document Analyzer — Security model
 
 ## Authentication and authorisation
 

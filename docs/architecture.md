@@ -113,7 +113,7 @@ flowchart LR
 
 There's no authentication on the REST endpoints. Fetches are limited to public `http`/`https` addresses,
 certificates are validated unless explicitly disabled, and document content is sent to OpenAI. See
-[security.md](security.md).
+[security-model.md](security-model.md).
 
 ## Significant design decisions
 
