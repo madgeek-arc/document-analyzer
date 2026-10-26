@@ -1,0 +1,18 @@
+flowchart LR
+    CALLER["Caller<br/>(host app via DocumentAnalyzerService,<br/>or HTTP client in standalone mode)"] --> SVC
+
+    subgraph DA[document-analyzer]
+        CTRL["DocumentAnalyzerController<br/>/v1/documents/extract|enrich"] --> SVC[DocumentAnalyzerService]
+        SVC --> HTTP[HttpUriReader<br/>java.net.http]
+        SVC --> PDF[PdfContentExtractor<br/>PDFBox]
+        SVC --> WEB[WebPageContentExtractor]
+        WEB --> PW[Playwright<br/>headless Chromium]
+        WEB --> ROB[RobotsCache]
+        WEB --> FIL[SimpleSupplementaryUrlFilter]
+        SVC --> LLM[LlmDocumentContentProcessor<br/>Spring AI ChatClient]
+    end
+
+    HTTP -- "HTTP(S)" --> SITES[(External websites<br/>page, sitemap.xml, links)]
+    PW -- "HTTP(S)" --> SITES
+    ROB -- "robots.txt" --> SITES
+    LLM -- "HTTPS" --> OPENAI[(OpenAI API)]

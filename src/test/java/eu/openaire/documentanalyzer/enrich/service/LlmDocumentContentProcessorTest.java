@@ -29,12 +29,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -329,5 +333,27 @@ class LlmDocumentContentProcessorTest {
         ArrayNode result = processor.translate(input, "Spanish");
 
         assertThat(result).isEmpty();
+    }
+
+    // ── generate ─────────────────────────────────────────────────────────────
+
+    @Test
+    void generate_invalidJson_returnsNullAfterFiveRequests() throws Exception {
+        ChatClient client = mock(ChatClient.class);
+        ChatClient.ChatClientRequestSpec spec = mock(ChatClient.ChatClientRequestSpec.class);
+        ChatClient.CallResponseSpec call = mock(ChatClient.CallResponseSpec.class, Answers.RETURNS_DEEP_STUBS);
+        when(client.prompt()).thenReturn(spec);
+        when(spec.advisors(any(Advisor.class))).thenReturn(spec);
+        when(spec.user(anyString())).thenReturn(spec);
+        when(spec.call()).thenReturn(call);
+        when(call.chatResponse().getResult().getOutput().getText()).thenReturn("not json");
+        LlmDocumentContentProcessor failing = new LlmDocumentContentProcessor(client, mapper);
+        Content content = new Content();
+        content.setText("Some text");
+
+        JsonNode result = failing.generate(mapper.readTree("{\"title\":null}"), content);
+
+        assertThat(result).isNull();
+        verify(spec, times(5)).user(anyString());
     }
 }

@@ -23,8 +23,30 @@ import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 public class PdfContentExtractor implements ContentExtractor {
+
+    private static final byte[] PDF_SIGNATURE = "%PDF-".getBytes(StandardCharsets.US_ASCII);
+    private static final int PDF_SIGNATURE_SEARCH_LIMIT = 1024;
+
+    /**
+     * Returns whether the data is a PDF document, i.e. whether the {@code %PDF-} header appears within its
+     * first 1024 bytes.
+     */
+    public static boolean isPdf(byte[] data) {
+        if (data == null) {
+            return false;
+        }
+        int limit = Math.min(data.length, PDF_SIGNATURE_SEARCH_LIMIT) - PDF_SIGNATURE.length;
+        for (int i = 0; i <= limit; i++) {
+            if (Arrays.equals(data, i, i + PDF_SIGNATURE.length, PDF_SIGNATURE, 0, PDF_SIGNATURE.length)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     @Override
     public PdfContent extract(byte[] data) throws IOException {

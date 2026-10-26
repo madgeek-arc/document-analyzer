@@ -5,6 +5,12 @@ Currently, it supports HTML pages and PDF documents.
 It fetches the document using the provided URL, extracts its text, and optionally 
 uses an OpenAI model to populate a JSON template with structured data from that content.
 
+## Role
+
+Fetches web pages and PDFs referenced by users, extracts their text, and optionally asks an OpenAI
+model to fill a JSON template with data from them. Backend applications embed it as a library and
+inject `DocumentAnalyzerService`.
+
 ## Requirements
 
 - Java 21
@@ -18,13 +24,15 @@ uses an OpenAI model to populate a JSON template with structured data from that 
 ```
 
 <!-- x-release-please-start-version -->
-The executable JAR is produced at `target/document-analyzer-1.1.1-SNAPSHOT`.
+This produces the library jar `target/document-analyzer-1.1.1-SNAPSHOT.jar` and the executable
+`target/document-analyzer-1.1.1-SNAPSHOT-exec.jar` for standalone use (only the library jar is deployed).
 <!-- x-release-please-end -->
 
 
 ## Configuration
 
-All settings are in `src/main/resources/application.yml`. The minimum required override at runtime is the OpenAI API key.
+Standalone defaults are in `src/main/resources/document-analyzer.yml`, which only the standalone
+application loads. The minimum required override at runtime is the OpenAI API key.
 
 | Property | Default | Description |
 |---|---|---|
@@ -33,8 +41,14 @@ All settings are in `src/main/resources/application.yml`. The minimum required o
 | `spring.ai.openai.chat.options.temperature` | `1.0` | Sampling temperature |
 | `server.port` | `8666` | HTTP port |
 | `server.servlet.context-path` | `/api` | Context path |
-| `scraping.request-delay-ms` | `500` | Delay between HTTP requests to the same host |
-| `system-prompt` | _(see yml)_ | System prompt sent to the LLM on every enrich call |
+| `scraping.request-delay-ms` | `500` | Delay before every HTTP request and between rendered pages |
+| `system-prompt` | _(see yml; unset when embedded)_ | System prompt sent to the LLM with every request |
+| `document-analyzer.http.connect-timeout` | `10s` | HTTP connect timeout |
+| `document-analyzer.http.request-timeout` | `60s` | HTTP request timeout |
+| `document-analyzer.http.trust-all-certificates` | `false` | Accept any server certificate chain (hostname verification still applies) |
+| `document-analyzer.allow-private-addresses` | `false` | Allow URLs that resolve to loopback, private or other non-public addresses |
+
+See [docs/configuration.md](docs/configuration.md) for details.
 
 Override as environment variables, system properties or by providing a custom .properties/.yaml file.
 
@@ -42,7 +56,7 @@ Override as environment variables, system properties or by providing a custom .p
 
 <!-- x-release-please-start-version -->
 ```bash
-java -Dspring.ai.openai.api-key=<your-openai-key> -jar target/document-analyzer-1.1.1-SNAPSHOT
+java -Dspring.ai.openai.api-key=<your-openai-key> -jar target/document-analyzer-1.1.1-SNAPSHOT-exec.jar
 ```
 <!-- x-release-please-end -->
 
@@ -53,7 +67,8 @@ The Swagger UI is at `http://localhost:8666/api/swagger-ui.html`.
 
 ### Extract — `POST /api/v1/documents/extract`
 
-Downloads the URL and returns its extracted text content. Detects PDF vs HTML automatically.
+Downloads the URL and returns its extracted text content. Detects PDF vs HTML from the downloaded
+content. Only `http`/`https` URLs on public addresses are accepted (400 otherwise).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -94,7 +109,7 @@ Fetches the URL, extracts its content, then uses the LLM to fill in a JSON templ
 | `topics` | query (repeatable) | no | Keyword hints for supplementary page filtering (same as `/extract`) |
 | _(body)_ | JSON | yes | Template object; the LLM populates its fields from the document |
 
-**Response** — the template filled in by the LLM.
+**Response** — the template filled in by the LLM. `502` if the LLM returns no valid JSON.
 
 **Examples:**
 
@@ -156,7 +171,9 @@ The artifact is published to the madgik Maven repository. Add to your `pom.xml`:
 ```
 <!-- x-release-please-end -->
 
-Spring Boot auto-configuration (`DocumentAnalyzerAutoConfiguration`) wires `DocumentAnalyzerService` automatically when the dependency is on the classpath and `system-prompt` is set. Inject the service directly:
+Spring Boot auto-configuration (`DocumentAnalyzerAutoConfiguration`) wires `DocumentAnalyzerService` and
+`DocumentContentProcessor` when the dependency is on the classpath, unless the application defines its
+own. Chromium is launched on the first page render, not at startup. Inject the service directly:
 
 ```java
 @Autowired
@@ -169,6 +186,15 @@ Content content = documentAnalyzerService.read(uri);
 JsonNode result = documentAnalyzerService.generate(uri, templateNode);
 ```
 
+## Documentation
+
+- [Architecture](docs/architecture.md) · [Integration](docs/integration.md) · [API](docs/api.md)
+- [Configuration](docs/configuration.md) · [Example configuration](application-example.yml)
+- [Deployment](docs/deployment.md) · [Operations](docs/operations.md) · [Troubleshooting](docs/troubleshooting.md)
+- [Security model](docs/security-model.md) · [Security policy](SECURITY.md) · [Development](docs/development.md) · [Testing](docs/testing.md)
+- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE). Maintained by the madgeek-arc team
+(<https://github.com/madgeek-arc/document-analyzer>).

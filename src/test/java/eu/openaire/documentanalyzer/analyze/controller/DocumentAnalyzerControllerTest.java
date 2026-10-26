@@ -21,6 +21,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.common.model.HtmlContent;
 import eu.openaire.documentanalyzer.common.model.PdfContent;
+import eu.openaire.documentanalyzer.enrich.service.EnrichmentException;
+import eu.openaire.documentanalyzer.extract.service.BlockedUrlException;
 import eu.openaire.documentanalyzer.extract.service.SupplementaryUrlFilterMethod;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -171,5 +173,26 @@ class DocumentAnalyzerControllerTest {
         mockMvc.perform(post("/v1/documents/enrich")
                         .param("url", "https://example.com"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void extractContent_blockedUrl_returnsBadRequest() throws Exception {
+        when(documentAnalyzerService.read(any(URI.class), any(List.class), any(SupplementaryUrlFilterMethod.class)))
+                .thenThrow(new RuntimeException(new BlockedUrlException("URL resolves to a non-public address")));
+
+        mockMvc.perform(post("/v1/documents/extract").param("url", "http://127.0.0.1/"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void enrichDocument_enrichmentFailure_returnsBadGateway() throws Exception {
+        when(documentAnalyzerService.generate(any(URI.class), any(JsonNode.class), any(List.class), any(SupplementaryUrlFilterMethod.class)))
+                .thenThrow(new EnrichmentException("no valid metadata"));
+
+        mockMvc.perform(post("/v1/documents/enrich")
+                        .param("url", "https://example.com")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": null}"))
+                .andExpect(status().isBadGateway());
     }
 }

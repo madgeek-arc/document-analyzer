@@ -20,6 +20,7 @@ package eu.openaire.documentanalyzer.analyze.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import eu.openaire.documentanalyzer.common.model.Content;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
+import eu.openaire.documentanalyzer.enrich.service.EnrichmentException;
 import eu.openaire.documentanalyzer.extract.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,9 +52,13 @@ public class DocumentAnalyzerService implements Closeable {
     }
 
     public DocumentAnalyzerService(DocumentContentProcessor contentProcessor, long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        this(new WebPageContentExtractor(requestDelayMs),
+        this(contentProcessor, HttpReaderSettings.defaults().withRequestDelayMs(requestDelayMs));
+    }
+
+    public DocumentAnalyzerService(DocumentContentProcessor contentProcessor, HttpReaderSettings settings) throws NoSuchAlgorithmException, KeyManagementException {
+        this(new WebPageContentExtractor(settings),
              new PdfContentExtractor(),
-             new HttpUriReader(requestDelayMs),
+             new HttpUriReader(settings),
              contentProcessor);
     }
 
@@ -64,7 +69,7 @@ public class DocumentAnalyzerService implements Closeable {
     public Content read(URI uri, List<String> topics, SupplementaryUrlFilterMethod filterMethod) {
         try {
             UriReader.Data raw = contentReader.read(uri);
-            if (uri.toString().contains(".pdf")) {
+            if (PdfContentExtractor.isPdf(raw.data())) {
                 return pdfExtractor.extract(raw.data());
             } else {
                 return webPageExtractor.extractWholeSite(raw.uri(), topics, filterMethod);
@@ -84,7 +89,10 @@ public class DocumentAnalyzerService implements Closeable {
 
     public JsonNode generate(Content content, JsonNode template) {
         JsonNode augContent = contentProcessor.generate(template, content);
-        logger.info(augContent.toPrettyString());
+        if (augContent == null) {
+            throw new EnrichmentException("The LLM did not return valid metadata for the document");
+        }
+        logger.debug("Generated metadata: {}", augContent);
         return augContent;
     }
 

@@ -22,22 +22,24 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import eu.openaire.documentanalyzer.analyze.service.DocumentAnalyzerService;
 import eu.openaire.documentanalyzer.enrich.service.DocumentContentProcessor;
 import eu.openaire.documentanalyzer.enrich.service.LlmDocumentContentProcessor;
+import eu.openaire.documentanalyzer.extract.service.HttpReaderSettings;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.retry.annotation.EnableRetry;
+import org.springframework.util.StringUtils;
 
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 
 @EnableRetry
 @AutoConfiguration
+@EnableConfigurationProperties(DocumentAnalyzerProperties.class)
 public class DocumentAnalyzerAutoConfiguration {
 
 //    @Bean
@@ -52,26 +54,32 @@ public class DocumentAnalyzerAutoConfiguration {
 //        };
 //    }
 
-    @ConditionalOnClass(ChatClient.class)
-    @ConditionalOnProperty("system-prompt")
+    /**
+     * LLM-backed processor. When {@code system-prompt} is set, it is sent as the system message of every request.
+     */
     @Bean
-    ChatClient chatClient(ChatClient.Builder builder,
-                          @Value("${system-prompt}") String systemPrompt) {
-        return builder.defaultSystem(systemPrompt)
-                .build();
+    @ConditionalOnMissingBean
+    DocumentContentProcessor documentContentProcessor(ChatClient.Builder chatClientBuilder,
+                                                      ObjectMapper mapper,
+                                                      @Value("${system-prompt:}") String systemPrompt) {
+        if (StringUtils.hasText(systemPrompt)) {
+            chatClientBuilder.defaultSystem(systemPrompt);
+        }
+        return new LlmDocumentContentProcessor(chatClientBuilder.build(), mapper);
     }
 
-    @ConditionalOnClass(DocumentContentProcessor.class)
     @Bean
-    DocumentContentProcessor documentContentProcessor(ChatModel chatModel, ObjectMapper mapper) {
-        return new LlmDocumentContentProcessor(chatModel, mapper);
-    }
-
-    @ConditionalOnClass(DocumentAnalyzerService.class)
-    @Bean
+    @ConditionalOnMissingBean
     DocumentAnalyzerService documentAnalyzerService(
             DocumentContentProcessor documentContentProcessor,
+            DocumentAnalyzerProperties properties,
             @Value("${scraping.request-delay-ms:500}") long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        return new DocumentAnalyzerService(documentContentProcessor, requestDelayMs);
+        HttpReaderSettings settings = new HttpReaderSettings(
+                requestDelayMs,
+                properties.getHttp().getConnectTimeout(),
+                properties.getHttp().getRequestTimeout(),
+                properties.getHttp().isTrustAllCertificates(),
+                properties.isAllowPrivateAddresses());
+        return new DocumentAnalyzerService(documentContentProcessor, settings);
     }
 }

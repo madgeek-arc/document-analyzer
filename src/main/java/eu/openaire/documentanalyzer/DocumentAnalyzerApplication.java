@@ -19,10 +19,15 @@ package eu.openaire.documentanalyzer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import java.util.Map;
+
 @SpringBootApplication
 public class DocumentAnalyzerApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(DocumentAnalyzerApplication.class, args);
+		SpringApplication application = new SpringApplication(DocumentAnalyzerApplication.class);
+		// document-analyzer.yml holds the standalone defaults; as a library the jar contributes no configuration
+		application.setDefaultProperties(Map.of("spring.config.name", "application,document-analyzer"));
+		application.run(args);
 	}
 }

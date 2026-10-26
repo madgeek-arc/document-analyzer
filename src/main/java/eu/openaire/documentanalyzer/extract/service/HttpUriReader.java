@@ -43,6 +43,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -54,27 +55,49 @@ import java.util.Set;
 public class HttpUriReader implements UriReader {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpUriReader.class);
+    private static final int MAX_REDIRECTS = 5;
     private final HttpClient client;
     private final SSLContext sslContext;
     private final long requestDelayMs;
+    private final Duration requestTimeout;
+    private final UrlGuard urlGuard;
 
     public HttpUriReader() throws KeyManagementException, NoSuchAlgorithmException {
-        this(0);
+        this(HttpReaderSettings.defaults());
     }
 
     public HttpUriReader(long requestDelayMs) throws KeyManagementException, NoSuchAlgorithmException {
-        this.requestDelayMs = requestDelayMs;
+        this(HttpReaderSettings.defaults().withRequestDelayMs(requestDelayMs));
+    }
+
+    /**
+     * Creates a reader with the given timeouts and delay. Server certificates are validated unless
+     * {@link HttpReaderSettings#trustAllCertificates()} is set.
+     */
+    public HttpUriReader(HttpReaderSettings settings) throws KeyManagementException, NoSuchAlgorithmException {
+        this(settings, new UrlGuard(settings.allowPrivateAddresses()));
+    }
+
+    HttpUriReader(HttpReaderSettings settings, UrlGuard urlGuard) throws KeyManagementException, NoSuchAlgorithmException {
+        this.urlGuard = urlGuard;
+        this.requestDelayMs = settings.requestDelayMs();
+        this.requestTimeout = settings.requestTimeout();
         this.sslContext = createPermissiveSslContext();
-        this.client = HttpClient
+        HttpClient.Builder builder = HttpClient
                 .newBuilder()
-                .followRedirects(HttpClient.Redirect.ALWAYS)
-                .sslContext(sslContext)
-                .build();
+                .followRedirects(HttpClient.Redirect.NEVER) // followed in read(), so every hop is checked
+                .connectTimeout(settings.connectTimeout());
+        if (settings.trustAllCertificates()) {
+            builder.sslContext(sslContext);
+        }
+        this.client = builder.build();
     }
 
     HttpUriReader(HttpClient client, long requestDelayMs) throws KeyManagementException, NoSuchAlgorithmException {
         this.client = client;
         this.requestDelayMs = requestDelayMs;
+        this.requestTimeout = HttpReaderSettings.DEFAULT_REQUEST_TIMEOUT;
+        this.urlGuard = new UrlGuard(true);
         this.sslContext = createPermissiveSslContext();
     }
 
@@ -99,10 +122,11 @@ public class HttpUriReader implements UriReader {
 
     @Override
     public Data read(URI uri) throws IOException {
-        return read(uri, new LinkedHashSet<>());
+        return read(uri, new LinkedHashSet<>(), 0);
     }
 
-    private Data read(URI uri, Set<String> attemptedHosts) throws IOException {
+    private Data read(URI uri, Set<String> attemptedHosts, int redirects) throws IOException {
+        urlGuard.check(uri);
         String host = uri.getHost();
         if (host != null) {
             attemptedHosts.add(host.toLowerCase());
@@ -119,6 +143,7 @@ public class HttpUriReader implements UriReader {
             logger.info("Reading url: {}", uri);
             HttpRequest request = HttpRequest
                     .newBuilder(uri)
+                    .timeout(requestTimeout)
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                     .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
                     .header("Accept-Language", "en-US,en;q=0.9")
@@ -129,6 +154,10 @@ public class HttpUriReader implements UriReader {
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
             int status = response.statusCode();
+            if (isRedirect(status)) {
+                response.body().close();
+                return read(redirectTarget(uri, response, redirects), attemptedHosts, redirects + 1);
+            }
             if (status == 429 || status == 503) {
                 String retryAfter = response.headers().firstValue("Retry-After").orElse("unknown");
                 throw new RateLimitException("Rate limited (" + status + ") by " + uri + " — Retry-After: " + retryAfter);
@@ -153,11 +182,14 @@ public class HttpUriReader implements UriReader {
                 bytes = is.readAllBytes();
             }
 
+            if (PdfContentExtractor.isPdf(bytes)) {
+                return new Data(uri, bytes);
+            }
             Document doc = Jsoup.parse(new String(bytes, detectCharset(response)));
 
             String englishUrl = detectEnglishHtmlVersion(doc);
             if (englishUrl != null && !englishUrl.equals(uri.toString())) {
-                return read(URI.create(englishUrl), attemptedHosts);
+                return read(URI.create(englishUrl), attemptedHosts, redirects);
             }
             return new Data(uri, bytes);
 
@@ -166,14 +198,14 @@ public class HttpUriReader implements UriReader {
                     .filter(candidate -> hasNotBeenAttempted(candidate, attemptedHosts));
             if (fallbackUri.isPresent()) {
                 logger.warn("Retrying {} as {} due to TLS hostname mismatch", uri, fallbackUri.get());
-                return read(fallbackUri.get(), attemptedHosts);
+                return read(fallbackUri.get(), attemptedHosts, redirects);
             }
 
             Optional<URI> parentDomainUri = parentDomainUri(uri)
                     .filter(candidate -> hasNotBeenAttempted(candidate, attemptedHosts));
             if (parentDomainUri.isPresent()) {
                 logger.warn("Retrying {} as {} due to TLS hostname mismatch on subdomain", uri, parentDomainUri.get());
-                return read(parentDomainUri.get(), attemptedHosts);
+                return read(parentDomainUri.get(), attemptedHosts, redirects);
             }
 
             List<String> dnsNames = certificateDnsNames(uri);
@@ -183,7 +215,7 @@ public class HttpUriReader implements UriReader {
                         .filter(candidate -> hasNotBeenAttempted(candidate, attemptedHosts));
                 if (certificateHostFallback.isPresent()) {
                     logger.warn("Retrying {} as {} based on certificate SANs", uri, certificateHostFallback.get());
-                    return read(certificateHostFallback.get(), attemptedHosts);
+                    return read(certificateHostFallback.get(), attemptedHosts, redirects);
                 }
             }
             throw e;
@@ -192,7 +224,7 @@ public class HttpUriReader implements UriReader {
                     .filter(candidate -> hasNotBeenAttempted(candidate, attemptedHosts));
             if (fallbackUri.isPresent()) {
                 logger.warn("Retrying {} as {} due to unresolved host", uri, fallbackUri.get());
-                return read(fallbackUri.get(), attemptedHosts);
+                return read(fallbackUri.get(), attemptedHosts, redirects);
             }
             throw e;
         } catch (RobotsDisallowedException e) {
@@ -200,6 +232,23 @@ public class HttpUriReader implements UriReader {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while reading " + uri, e);
+        }
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+    }
+
+    private static URI redirectTarget(URI uri, HttpResponse<?> response, int redirects) throws IOException {
+        if (redirects >= MAX_REDIRECTS) {
+            throw new IOException("Too many redirects for " + uri);
+        }
+        String location = response.headers().firstValue("Location")
+                .orElseThrow(() -> new IOException("Redirect without Location header from " + uri));
+        try {
+            return uri.resolve(location);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Invalid redirect location '" + location + "' from " + uri, e);
         }
     }
 

@@ -39,7 +39,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     private final ContentMetadataRequestBuilder contentBuilder;
     private final ObjectMapper mapper;
 
-    LlmDocumentContentProcessor(ChatClient chatClient, ObjectMapper mapper) {
+    public LlmDocumentContentProcessor(ChatClient chatClient, ObjectMapper mapper) {
         this.chatClient = chatClient;
         this.mapper = mapper;
         this.contentBuilder = new ContentMetadataRequestBuilder();
@@ -74,6 +74,7 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
         try {
             response = requestJson(client, contentBuilder.request(template, content));
         } catch (Exception e) {
+            logger.error("Could not generate document metadata: {}", e.getMessage(), e);
             return null;
         }
         return response;
@@ -125,15 +126,14 @@ public class LlmDocumentContentProcessor implements DocumentContentProcessor {
     JsonNode requestJson(ChatClient.ChatClientRequestSpec client, String request) throws Exception {
         ChatResponse chatResponse;
         JsonNode json = null;
-        // retry up to 5 times if response is truncated
+        // ask again, up to 5 times in total, while the response isn't valid JSON (for example when truncated)
         for (int j = 0; j < 5; j++) {
             try {
                 chatResponse = client.user(request).call().chatResponse();
                 json = map(chatResponse.getResult().getOutput().getText());
                 return json;
             } catch (JsonProcessingException e) {
-                logger.warn(e.getMessage(), e);
-                client.user("The JSON response you provided was invalid, I will ask you in the following prompt to resend it.").call();
+                logger.warn("Invalid JSON in LLM response (attempt {}/5): {}", j + 1, e.getMessage());
             }
         }
         throw new Exception("Could not retrieve response in valid JSON format. Aborting..");

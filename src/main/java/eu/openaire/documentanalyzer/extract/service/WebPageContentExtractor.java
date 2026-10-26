@@ -30,8 +30,6 @@ import org.jsoup.nodes.Node;
 import org.jsoup.select.Elements;
 import org.jsoup.select.NodeTraversor;
 import org.jsoup.select.NodeVisitor;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -67,6 +65,8 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     );
 
     private static final int MAX_SUPPLEMENTARY_PAGES = 50;
+    private static final int MAX_RENDER_ATTEMPTS = 4;
+    private static final long RENDER_RETRY_INITIAL_BACKOFF_MS = 2000;
     private static final int MIN_PATH_MATCHES = 2;
     private static final List<String> ATTRS_TO_REMOVE = List.of(
             // event handlers
@@ -84,15 +84,16 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
 
     private final HttpUriReader contentReader;
     private final RobotsCache robotsCache;
-    private final Playwright playwright;
-    private final Browser browser;
+    private final UrlGuard urlGuard;
+    private Playwright playwright;
+    private Browser browser;
     private final Lock browserLock = new ReentrantLock();
     private final Map<SupplementaryUrlFilterMethod, SupplementaryUrlFilter> supplementaryUrlFilters;
     private final long requestDelayMs;
 
     /**
      * Initializes the extractor by creating an {@link HttpUriReader} for sitemap/HTTP fetching
-     * and launching a headless Chromium browser via Playwright for JavaScript-rendered page scraping.
+     * and preparing a headless Chromium browser via Playwright, launched on first use, for JavaScript-rendered page scraping.
      *
      * @throws NoSuchAlgorithmException if the SSL context cannot be initialized
      * @throws KeyManagementException   if the SSL context configuration fails
@@ -110,14 +111,22 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws KeyManagementException   if the SSL context configuration fails
      */
     public WebPageContentExtractor(long requestDelayMs) throws NoSuchAlgorithmException, KeyManagementException {
-        this.requestDelayMs = requestDelayMs;
-        this.contentReader = new HttpUriReader(requestDelayMs);
+        this(HttpReaderSettings.defaults().withRequestDelayMs(requestDelayMs));
+    }
+
+    /**
+     * Initializes the extractor with the given HTTP settings, used for sitemap, robots.txt and page fetches.
+     *
+     * @param settings HTTP timeouts, certificate handling and inter-request delay
+     * @throws NoSuchAlgorithmException if the SSL context cannot be initialized
+     * @throws KeyManagementException   if the SSL context configuration fails
+     */
+    public WebPageContentExtractor(HttpReaderSettings settings) throws NoSuchAlgorithmException, KeyManagementException {
+        this.requestDelayMs = settings.requestDelayMs();
+        this.urlGuard = new UrlGuard(settings.allowPrivateAddresses());
+        this.contentReader = new HttpUriReader(settings);
         // Robots.txt is fetched once per origin and cached
-        this.robotsCache = new RobotsCache(new HttpUriReader(0));
-        this.playwright = Playwright.create();
-        this.browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
-                .setHeadless(true)
-                .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox")));
+        this.robotsCache = new RobotsCache(new HttpUriReader(settings.withRequestDelayMs(0)));
         this.supplementaryUrlFilters = Map.of(
                 SupplementaryUrlFilterMethod.SIMPLE, new SimpleSupplementaryUrlFilter()
         );
@@ -237,20 +246,47 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
      * @throws IOException if navigation times out or Playwright fails to render the page;
      *                     retried up to 3 times with exponential backoff
      */
-    @Retryable(retryFor = IOException.class, noRetryFor = {RobotsDisallowedException.class},
-            maxAttempts = 4, backoff = @Backoff(delay = 2000, multiplier = 2))
     public HtmlContent extractFromUrl(String url) throws IOException {
+        urlGuard.check(URI.create(url));
+        long backoffMs = RENDER_RETRY_INITIAL_BACKOFF_MS;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return renderUrl(url);
+            } catch (RobotsDisallowedException | BlockedUrlException e) {
+                throw e;
+            } catch (IOException e) {
+                if (attempt == MAX_RENDER_ATTEMPTS) {
+                    throw e;
+                }
+                logger.warn("Rendering {} failed (attempt {}/{}): {}. Retrying in {} ms",
+                        url, attempt, MAX_RENDER_ATTEMPTS, e.getMessage(), backoffMs);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Interrupted while waiting to retry " + url, interrupted);
+                }
+                backoffMs *= 2;
+            }
+        }
+    }
+
+    private HtmlContent renderUrl(String url) throws IOException {
         browserLock.lock();
         try {
-            try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+            try (BrowserContext context = browser().newContext(new Browser.NewContextOptions()
                     .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .setExtraHTTPHeaders(Map.of(
                             "Accept-Language", "en-US,en;q=0.9",
                             "Accept", "text/html,application/xhtml+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
                     ))); Page page = context.newPage()) {
+                guardRequests(context);
                 com.microsoft.playwright.Response response = page.navigate(url, new Page.NavigateOptions()
                         .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
                         .setTimeout(60000));
+                if (!urlGuard.isAllowedRequest(page.url())) {
+                    throw new BlockedUrlException("Navigation ended on a blocked URL: " + page.url());
+                }
                 if (response != null) {
                     int status = response.status();
                     if (status == 429 || status == 503) {
@@ -305,7 +341,8 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         String htmlData = new String(data, StandardCharsets.UTF_8);
         browserLock.lock();
         try {
-            try (BrowserContext context = browser.newContext()) {
+            try (BrowserContext context = browser().newContext()) {
+                guardRequests(context);
                 Page page = context.newPage();
                 page.setContent(htmlData);
                 String renderedHtml = page.content();
@@ -317,6 +354,35 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
         } finally {
             browserLock.unlock();
         }
+    }
+
+    /**
+     * Returns the headless Chromium browser, launching it on first use. Callers must hold {@code browserLock}.
+     */
+    private Browser browser() {
+        if (browser == null) {
+            playwright = Playwright.create();
+            browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
+                    .setHeadless(true)
+                    .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox")));
+        }
+        return browser;
+    }
+
+    /**
+     * Aborts every browser request (page, redirect target, sub-resource, script fetch) that the
+     * {@link UrlGuard} rejects.
+     */
+    private void guardRequests(BrowserContext context) {
+        context.route("**/*", route -> {
+            String requestUrl = route.request().url();
+            if (urlGuard.isAllowedRequest(requestUrl)) {
+                route.resume();
+            } else {
+                logger.warn("Blocked browser request to {}", requestUrl);
+                route.abort("blockedbyclient");
+            }
+        });
     }
 
     private void waitForMeaningfulContent(Page page, String url) {
@@ -341,8 +407,14 @@ public class WebPageContentExtractor implements ContentExtractor, Closeable {
     public void close() {
         browserLock.lock();
         try {
-            browser.close();
-            playwright.close();
+            if (browser != null) {
+                browser.close();
+                browser = null;
+            }
+            if (playwright != null) {
+                playwright.close();
+                playwright = null;
+            }
         } finally {
             browserLock.unlock();
         }
