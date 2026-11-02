@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.1](https://github.com/madgeek-arc/document-analyzer/compare/1.1.0...1.1.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* block requests to non-public addresses (SSRF) ([10b2662](https://github.com/madgeek-arc/document-analyzer/commit/10b2662608e9d4e8132edbeab2667a066448086a))
+* detect PDFs by content instead of ".pdf" in the URL ([dd0423d](https://github.com/madgeek-arc/document-analyzer/commit/dd0423d3117c410364a13c4c9679956f89e53d09))
+* retry page rendering and launch Chromium on first use ([00b6867](https://github.com/madgeek-arc/document-analyzer/commit/00b68673d4d793a7ad2f6496757111b8c6a3a16f))
+* send the configured system prompt and let hosts replace the beans ([b593410](https://github.com/madgeek-arc/document-analyzer/commit/b59341013997687150f75926bcd774edfa5a5b54))
+* surface enrichment failures and stop logging generated metadata ([d38c97c](https://github.com/madgeek-arc/document-analyzer/commit/d38c97cdc8242952ed7eb6e6c27c43d0c386bb13))
+* validate TLS certificates and set HTTP timeouts by default ([3899e09](https://github.com/madgeek-arc/document-analyzer/commit/3899e09500adb1b3a172e20b4e03240d4a9650aa))
+
+
+### Documentation
+
+* add a security policy and rename security.md to security-model.md ([68c80ef](https://github.com/madgeek-arc/document-analyzer/commit/68c80ef9e39a3493cf965803dd09490d164cd186))
+* add repository documentation ([1cdeba9](https://github.com/madgeek-arc/document-analyzer/commit/1cdeba9ce8ee69f295509becf0c043011ae5d2cc))
+* drop the status field from the README metadata ([e54b642](https://github.com/madgeek-arc/document-analyzer/commit/e54b6426e48407dda3794ad7aa561fdc24b7a33d))
+* replace the README metadata table with prose ([ac1d8b0](https://github.com/madgeek-arc/document-analyzer/commit/ac1d8b0469a61748bd1b0c7a5a603f647a5fb286))
+
 ## 1.1.0 (2026-06-18)
 
 ### Features
